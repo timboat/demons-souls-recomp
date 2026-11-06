@@ -1,9 +1,10 @@
 # Linux and Steam Deck
 
-> **Works on Linux; Steam Deck not confirmed yet.** The kit has set up and played the game on Ubuntu
+> **Works on Linux and the Steam Deck.** On the Deck it plays but is not perfect yet: loads are slow and it is
+> not fully smooth. The kit has also set up and played the game on Ubuntu
 > 24.04 (Intel i7-4770K, NVIDIA GTX 980, Proton): about 57-58 fps on average in 60 fps mode, but choppy,
 > with frequent one-frame hitches on that 4-core CPU. Linux performance work is under way. If you try
-> it, especially on a Steam Deck or an AMD / Intel GPU, please report what happens, good or bad: see
+> it, especially on a Steam Deck or another AMD / Intel GPU, please report what happens, good or bad: see
 > [For testers](#for-testers).
 
 There is no ready-made Linux download of the game, and there cannot be one: it would contain code
@@ -115,7 +116,8 @@ Open a GitHub issue with that. Known unknowns, roughly in the order they may bit
 - On a real Linux PC: Ubuntu 24.04, Intel i7-4770K + NVIDIA GTX 980 under Proton. Setup and the game
   run; the tutorial plays at about 57-58 fps on average in 60 fps mode, with frequent one-frame hitches
   (CPU-bound). Its first setup found the line-ending bug fixed in 6c7dca3.
-- Not confirmed yet: a Steam Deck; AMD and Intel GPUs (Mesa drivers).
+- Steam Deck (AMD GPU, Mesa): set up and plays, but loads take minutes and it is not fully smooth yet.
+- Not confirmed yet: Intel GPUs and AMD desktop GPUs.
 
 ## How it works (for developers)
 
