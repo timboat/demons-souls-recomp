@@ -66,7 +66,7 @@ chmod +x "$DS_HOME"/linux/*.sh 2>/dev/null
 cd "$DS_HOME" || exit 1
 export DS_SETUP_NAME="the AppImage" DS_PLAY_HINT="Start the AppImage again (or with: play) to play."
 echo "Demon's Souls PC port kit -- data folder: $DS_HOME"
-echo "Works on Linux (tested on Ubuntu 24.04); a Steam Deck is not confirmed yet."
+echo "Works on Linux (tested on Ubuntu 24.04) and the Steam Deck (slow loads, not fully smooth yet)."
 echo "Please report how it goes on GitHub (docs/LINUX.md, \"For testers\")."
 
 case "$cmd" in
