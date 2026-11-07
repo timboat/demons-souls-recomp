@@ -2315,6 +2315,28 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       Alt, number keys on the d-pad); in game (sandbox, scripted keys): start=Q -> a Q press opens the title menu,
       without the binding it does not; the title reads "PRESS ENTER KEY" / "PRESS Q KEY", centred; the user's test of
       the launcher window and the game.
+104. **Flashing, wrong pictures at 2x and above: the scaled present's descriptor table was overwritten while queued
+    (2026-11-07; the user: "in 2x res the old monk cutscene is super flashy and wrong", "flashing a lot on the char
+    select screen, this is on 2x"; "only happens on 2x and above not on 1x, and its not all the time"; a YouTube
+    review of the port named the visual bugs at the higher resolutions too):**
+    - Earlier dumps of the 2x surface (105 frames of the save list) never showed it: they read the picture before it is
+      shrunk into the window. At 1x the present is a CopyResource; at 2x and up (and a resized / fullscreen window,
+      fix 74) the box filter (ld_downsample_to) or bilinear (ld_present_bilinear) DRAWS it into the swap chain buffer,
+      sampling the surface through a descriptor table from the per-frame SRV ring (srv_table).
+    - Since LD_PRESENT_SPLIT (fix 50, default) the render thread waits after Present only for the frame's own work,
+      not for the present's list (that one waits for the display to hand a buffer back). The next frame then resets
+      the ring and its draws CopyDescriptors over the same entries -- the queued present sampled whatever texture a
+      later draw put in its table. Static screens are the worst case: each frame takes the same number of tables, so
+      the next frame's last draws land on the present's. (A full ring also gave no table: no scaled present at all.)
+    - Measured: LD_PRES_HAZARD=1 (kept, a test switch) notes the ring table a scaled present takes (or would take)
+      and its fence, and counts a later srv_table() handing it out again before that fence passed. 80 s at 2x on the
+      title screen (DES_SKIP_INTRO): 8+ such overwrites (fence N, completed N-1).
+    - Fix: LD_PRES_TABLES (4) descriptor tables of its own after the ring, used in turn (ld_present_table): the one
+      written for a present was last used 4 presents ago, which has finished (each frame waits for its own work
+      after Present and the queue runs in order). LD_PRES_OWN=0 = the ring as before.
+    - Checked: the 2x run with the fix; the user's test at 2x ("way way way way better"; a flashing menu after
+      quitting to it from a game is a separate, older bug, not this one); the patch section
+      rebuilt from ps3recomp's blob + main's section and applied both ways (core.autocrlf=true / input).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
