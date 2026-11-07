@@ -20,8 +20,8 @@ REPO = 'timboat/demons-souls-recomp'
 API = f'https://api.github.com/repos/{REPO}/releases/latest'
 VERSION = os.path.join(ROOT, 'VERSION')
 # never written, even if a ZIP had them: what SETUP makes on this PC and what the player keeps
-KEEP = {'game', 'game_remaster', 'game_mod', 'port', 'deps', '.venv', '.git', 'hdd0', 'hdd1', 'gamedata', 'logs',
-        'perf', 'captures', 'launcher.ini', 'update_pending.txt'}
+KEEP = {'game', 'game_remaster', 'game_mod', 'game_bossrush', 'bossrush', 'port', 'deps', '.venv', '.git', 'hdd0',
+        'hdd1', 'gamedata', 'logs', 'perf', 'captures', 'launcher.ini', 'update_pending.txt'}
 
 
 def say(msg=''):

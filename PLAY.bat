@@ -36,6 +36,18 @@ rem is "game_remaster" (the launcher's Game: PC Remaster mod, NOTES fix 45), you
 rem "game_mod" (Game: My models). Saves are shared.
 if "%DES_GAME%"=="" set "DES_GAME=game"
 if /i "%DES_GAME%"=="game_remaster" set "PS3_TITLE=Demon's Souls (ps3recomp) - PC Remaster mod"
+rem DES_BOSS_RUSH=1 (the launcher's Game: Boss rush): game_bossrush, which tools\make_boss_rush.py makes from game\
+rem the first time and after an update of the mode (hard links: no extra disk space), saves of its own in
+rem bossrush\gamedata (your normal saves are never used) and the run timer's files in bossrush\ (splits.txt,
+rem results.txt). A new character starts in the Nexus; the timer runs from the first boss fog to King Allant.
+if not "%DES_BOSS_RUSH%"=="1" goto no_boss_rush
+set "DES_GAME=game_bossrush"
+set "PS3_TITLE=Demon's Souls (ps3recomp) - Boss rush"
+set "PS3_GAMEDATA_ROOT=%D%\bossrush\gamedata"
+set "DES_BOSS_RUSH_DIR=%D%\bossrush"
+if not exist "%D%\.venv\Scripts\python.exe" goto boss_rush_failed
+"%D%\.venv\Scripts\python.exe" "%D%\tools\make_boss_rush.py" || goto boss_rush_failed
+:no_boss_rush
 set "PS3_HDD0_ROOT=%D%\hdd0"
 set "PS3_HDD1_ROOT=%D%\hdd1"
 set "RSX_LIVE_DRAW=1"
@@ -234,6 +246,12 @@ rem Custom frame rate N (31-240): 2 vblanks per game frame, guest clock N/30 (at
 rem 60 fps and uncapped modes), shortest adaptive step 1/N above 60. When the monitor's refresh is a
 rem whole multiple of N every frame stays up the same number of refreshes (vsync, even pacing);
 rem otherwise vsync is off, which is smooth on a G-Sync / FreeSync screen and may tear on others.
+:boss_rush_failed
+echo.
+echo Boss rush: game_bossrush could not be made from your game files (the messages above say why). Run SETUP.bat
+echo if it asks for it, or pick "Game: Normal" in the launcher to play the normal game.
+if not defined DES_LAUNCHER pause
+exit /b 1
 rem STALE=1 when patches\ differs from what the last successful build used (see :play above).
 :stale
 set "STALE="

@@ -274,7 +274,7 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -38897,8 +38899,432 @@
+@@ -38897,8 +38899,445 @@
          return;
  }
  
@@ -371,9 +371,22 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
 +extern "C" volatile int g_des_title_shown;
 +extern "C" volatile unsigned g_ps3_pad_inject;   /* cellPad.c */
 +extern "C" volatile int g_ps3_present_black;     /* rsx_live_draw.c */
++extern "C" void br_step(void);   /* project/ds_boss_rush.cpp: boss rush timer (DES_BOSS_RUSH) */
++extern "C" int br_take_souls(void);
++extern "C" void br_souls_done(int n);
 +volatile int g_des_title_shown;
  void func_0001B8D0(ppu_context* ctx) {
      PPU_MM_SNAP
++    br_step();
++    /* Boss rush starting souls (project/ds_boss_rush.cpp): added to the player's game data, souls at +0x78.
++     * That struct = *(*(*(TOC[-0x788C] - 0x8000)) + 8), as func_00414F88 -> func_00224B10 (soul level). */
++    { const int add = br_take_souls();
++      if (add) { const uint32_t t8 = vm_read32((uint32_t)ctx->gpr[2] - 0x788C);
++        const uint32_t q1 = t8 ? vm_read32(t8 - 0x8000) : 0, q2 = q1 ? vm_read32(q1) : 0;
++        const uint32_t pd = q2 ? vm_read32(q2 + 0x8) : 0;
++        if (pd) { const int32_t was = (int32_t)vm_read32(pd + 0x78);
++          vm_write32(pd + 0x78, (uint32_t)(was + add)); br_souls_done(add);
++          fprintf(stderr, "[bossrush] +%d souls (%d -> %d)\n", add, was, was + add); } } }
 +    /* DES_STEP_STATS=1 (PORT DEBUG): this is the game's per-step update; every 5 s print steps per
 +     * real second and game seconds per real second (steps * the step float at 0x018C8DB4). */
 +    { static int on = -1; static unsigned long long t0, n0; static unsigned long long n;
@@ -981,7 +994,46 @@ diff -ruN a/recompiled/ppu_recomp_018.cpp b/recompiled/ppu_recomp_018.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -63474,9 +63477,30 @@
+@@ -40664,6 +40667,11 @@
+         goto loc_00185088;
+ }
+ 
++/* Boss rush (project/ds_boss_rush.cpp, NOTES fix 100): a new character goes straight to the Nexus in soul form, as
++ * the answer "No" to "Would you like to play the journey to the Nexus?" (text 45500) does -- the prompt is not shown,
++ * and a save that has never done the tutorial is not sent there either. */
++extern "C" int br_on(void);
++static volatile int g_br_journey_no;
+ void func_00185158(ppu_context* ctx) {
+     PPU_MM_SNAP
+         uint64_t _cs_29 = ctx->gpr[29];
+@@ -40704,7 +40712,7 @@
+         { int64_t a = (int32_t)ctx->gpr[0]; int64_t b = (int64_t)0; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
+         ctx->gpr[3] = (int64_t)(int32_t)(0);
+         ctx->gpr[0] = ppc_rldicl(ctx->gpr[31], 0, 32);
+-        if ((!((ctx->cr >> 1) & 1))) goto loc_00185240;
++        if ((!((ctx->cr >> 1) & 1)) || br_on()) goto loc_00185240;
+         ctx->gpr[4] = vm_read32(ctx->gpr[30] + -0x7E64);
+         ctx->lr = 0x001851E8; func_008860A0(ctx); DRAIN_TRAMPOLINE(ctx);
+         /* nop */;
+@@ -40737,7 +40745,8 @@
+         ctx->gpr[4] = (int64_t)(int32_t)(2);
+         ctx->gpr[6] = (int64_t)(int32_t)(3);
+         ctx->gpr[7] = (int64_t)(int32_t)(4);
+-        ctx->lr = 0x0018525C; func_00184FD0(ctx); DRAIN_TRAMPOLINE(ctx);
++        if (br_on()) g_br_journey_no = 1;   /* boss rush: no prompt; the next step answers "No" */
++        else { ctx->lr = 0x0018525C; func_00184FD0(ctx); DRAIN_TRAMPOLINE(ctx); }
+         ctx->gpr[9] = vm_read32(ctx->gpr[29] + 0x8);
+         ctx->gpr[9] = ctx->gpr[9] + (int64_t)(1);
+         vm_write32(ctx->gpr[29] + 0x8, ctx->gpr[9]);
+@@ -41017,6 +41026,7 @@
+         ctx->lr = 0x001855E0; func_00720F50(ctx); DRAIN_TRAMPOLINE(ctx);
+         /* nop */;
+         ctx->lr = 0x001855E8; func_00721690(ctx); DRAIN_TRAMPOLINE(ctx);
++        if (g_br_journey_no) { g_br_journey_no = 0; ctx->gpr[3] = 2; }   /* boss rush: "No" -> the Nexus */
+         /* nop */;
+         { int64_t a = (int32_t)ctx->gpr[3]; int64_t b = (int64_t)1; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
+         if (((ctx->cr >> 1) & 1)) goto loc_00185710;
+@@ -63474,9 +63484,30 @@
          ctx->gpr[1] = ctx->gpr[1] + (int64_t)(0x80);
          return;
  loc_001978F0:
@@ -2386,8 +2438,8 @@ diff -ruN a/recompiled/ppu_recomp_069.cpp b/recompiled/ppu_recomp_069.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
---- a/recompiled/ppu_recomp_070.cpp	2026-10-31 19:24:18.881769100 -0700
-+++ b/recompiled/ppu_recomp_070.cpp	2026-10-31 19:25:04.261273200 -0700
+--- a/recompiled/ppu_recomp_070.cpp	2026-11-06 21:00:00.000000000 -0700
++++ b/recompiled/ppu_recomp_070.cpp	2026-11-06 21:00:00.000000000 -0700
 @@ -242,12 +242,14 @@
  
  /* Drain pending trampolines after any call that might set g_trampoline_fn.
@@ -2403,15 +2455,21 @@ diff -ruN a/recompiled/ppu_recomp_069.cpp b/recompiled/ppu_recomp_069.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -14790,6 +14792,22 @@
+@@ -14788,8 +14790,29 @@
+         return;
+ }
  
++extern "C" void br_lua_line(const char* line);   /* project/ds_boss_rush.cpp */
  void func_00C02C78(ppu_context* ctx) {
      PPU_MM_SNAP
 +    /* DES_LUA_PRINT=1 (PORT DEBUG): the game registers this as the scripts' print() and it
 +     * writes nowhere in retail. Copy its arguments to stderr as "[lua] ..." first. Lua API as
 +     * luaB_print (0xCA5230) uses it: 0xC9E170 = lua_gettop, 0xCA0570 = lua_tostring. */
-+    { static int on = -1; if (on < 0) on = getenv("DES_LUA_PRINT") ? 1 : 0;
-+      if (on) { const ppu_context save = *ctx; const uint32_t L = (uint32_t)ctx->gpr[3];
++    /* DES_BOSS_RUSH=1 (boss rush mode): "BRX <event>" lines from the boss rush script module go to the
++     * run timer (project/ds_boss_rush.cpp). */
++    { static int on = -1, br = -1; if (on < 0) on = getenv("DES_LUA_PRINT") ? 1 : 0;
++      if (br < 0) { const char* e = getenv("DES_BOSS_RUSH"); br = e && *e && *e != '0'; }
++      if (on || br) { const ppu_context save = *ctx; const uint32_t L = (uint32_t)ctx->gpr[3];
 +        ctx->lr = 0x00C02C78; func_00C9E170(ctx); DRAIN_TRAMPOLINE(ctx);
 +        const int n = (int)(int32_t)ctx->gpr[3]; char line[600]; size_t k = 0;
 +        for (int i = 1; i <= n && i <= 8; i++) {
@@ -2421,7 +2479,8 @@ diff -ruN a/recompiled/ppu_recomp_069.cpp b/recompiled/ppu_recomp_069.cpp
 +          if (i > 1 && k < sizeof line - 1) line[k++] = ' ';
 +          if (!sp) { const char* t = "<?>"; while (*t && k < sizeof line - 1) line[k++] = *t++; }
 +          else for (uint32_t a = sp; k < sizeof line - 1; a++) { const char c = (char)vm_read8(a); if (!c) break; line[k++] = c; } }
-+        line[k] = 0; fprintf(stderr, "[lua] %s\n", line);
++        line[k] = 0; if (on) fprintf(stderr, "[lua] %s\n", line);
++        if (br && !strncmp(line, "BRX ", 4)) br_lua_line(line + 4);
 +        *ctx = save; } }
          uint64_t _cs_19 = ctx->gpr[19];
          uint64_t _cs_20 = ctx->gpr[20];

@@ -578,8 +578,8 @@ def fix_future_times():
     ("manifest 'build.ninja' still dirty after 100 tries"). Date them now. Only this repo's own files;
     game/, port/, deps/ and the rest are made on this PC."""
     now = time.time()
-    skip = {'game', 'game_remaster', 'game_mod', 'port', 'deps', '.venv', '.git', 'logs', 'perf', 'hdd0', 'hdd1',
-            'gamedata', 'captures', 'dev_flash', 'no_flash'}
+    skip = {'game', 'game_remaster', 'game_mod', 'game_bossrush', 'bossrush', 'port', 'deps', '.venv', '.git',
+            'logs', 'perf', 'hdd0', 'hdd1', 'gamedata', 'captures', 'dev_flash', 'no_flash'}
     n = 0
     for d, dirs, files in os.walk(ROOT):
         if d == ROOT:

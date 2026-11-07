@@ -121,7 +121,7 @@ straight away, for a shortcut. Without the launcher, set the switches before run
 | *Frame rate* | `DES_FPS=30\|50\|60\|unlimited\|31-240` | Auto = an even rate for your screen: 60 on 60 / 120 / 240 Hz, 50 on 100 Hz, 72 on 144 Hz, 55 on 165 Hz, 75 on 75 Hz. Game speed is right at any rate. A rate that divides your refresh rate is perfectly even; others turn vsync off. |
 | *My screen has G-Sync / FreeSync* | `DES_VRR=1` | lets a variable-refresh monitor follow the frames (vsync-off frames may tear, so the monitor shows each when it is ready); Auto is then 60 at any refresh rate. Leave it off on other screens: the picture would tear. |
 | *Resolution* | `DES_RES_SCALE=2` (up to 4) | renders above 1280x720; *Sharper shadows* = `LD_RES_SCALE_SHADOW=1` |
-| *Game* | `DES_GAME=game_remaster` / `game_mod` | the PC Remaster mod or your imported models (see below) |
+| *Game* | `DES_GAME=game_remaster` / `game_mod`, `DES_BOSS_RUSH=1` | the PC Remaster mod, your imported models (see below), or [boss rush mode](#boss-rush-mode) |
 | *Dump textures* | `LD_TEX_DUMP=1` | saves every texture drawn, for texture packs |
 | *Skip the intro* | `DES_SKIP_INTRO=1` | starts at PRESS START; story movies still play |
 | *Keep my build after updates* | `DES_NO_REBUILD=1` | plays your current build instead of rebuilding |
@@ -162,6 +162,25 @@ Keyboard + mouse work alongside a controller; whichever you touch last takes ove
   it). The button prompts and the title's *PRESS ENTER KEY* follow your keys.
 
 Saves go to `gamedata/`, and logs to `logs/`; they grow ~600 MB an hour, and the previous run is kept.
+
+### Boss rush mode
+
+*Game: Boss rush* in the launcher (or `DES_BOSS_RUSH=1 linux/play.sh`; not on macOS yet). Make a new character:
+you skip the tutorial and start in the Nexus in soul form, with 3,000 souls and every trader there. Boldwin also
+sells every weapon and shield, every armour piece and ring, every upgrade material, Turpentine and Firebombs.
+- **Pick a boss:** each world's archstone offers that world's next unbeaten boss and puts you at its fog gate.
+- **After a kill:** the boss's archstone offers the next boss (*Fight the Tower Knight?*) or *Return to the Nexus?*
+- **Dying:** you go back to the same boss's fog in body form.
+- **The Nexial Binding** takes you back to the Nexus and keeps your souls.
+- **The run** ends when King Allant dies; his fight and the ending are the game's own.
+- **The timer** at the bottom of the screen appears once you are in the game. It starts at the first fog and never
+  pauses, except while the game is closed. Splits and the final time go to `bossrush\splits.txt` and
+  `bossrush\results.txt`.
+- **Boss rush souls** in the launcher (`DES_BR_SOULS=2`, 3, 5 or 10): every enemy and boss gives that many times its
+  souls. The timer shows *Souls x2* and so on when it is not 1x, so runs and videos say which they used.
+
+It has its own saves in `bossrush\`, so your normal saves are never used. Play makes `game_bossrush\` from your
+game files the first time, in seconds and with no extra disk space (again when you change the souls setting).
 
 ## Reporting stutters and crashes
 

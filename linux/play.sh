@@ -15,7 +15,7 @@
 #                            Microsoft by winetricks) into that prefix, for when Wine's own one fails on
 #                            the game's shaders (black or missing geometry, "D3DCompile" errors in the log)
 # Environment: DES_FPS=30|50|60|unlimited|31-240 (a Steam Deck defaults to 30), DES_MOVIES=0, DES_NAME,
-#              DES_GAME, DES_RECORD=0, DES_GOD=1 -- all as in PLAY.bat.
+#              DES_GAME, DES_BOSS_RUSH=1, DES_RECORD=0, DES_GOD=1 -- all as in PLAY.bat.
 set -u
 D=$(cd "$(dirname "$0")/.." && pwd)
 cd "$D"
@@ -98,6 +98,18 @@ fi
 export PS3_TITLE="Demon's Souls (ps3recomp)"
 DES_GAME=${DES_GAME:-game}
 [ "$DES_GAME" = game_remaster ] && PS3_TITLE="Demon's Souls (ps3recomp) - PC Remaster mod"
+# DES_BOSS_RUSH=1: boss rush mode, as in PLAY.bat -- game_bossrush, made from game/ by tools/make_boss_rush.py
+# (hard links), its own saves in bossrush/gamedata and the run timer's files in bossrush/.
+if [ "${DES_BOSS_RUSH:-}" = 1 ]; then
+  DES_GAME=game_bossrush
+  PS3_TITLE="Demon's Souls (ps3recomp) - Boss rush"
+  mkdir -p "$D/bossrush/gamedata"
+  export DES_BOSS_RUSH=1 PS3_GAMEDATA_ROOT="$(winpath "$D/bossrush/gamedata")" DES_BOSS_RUSH_DIR="$(winpath "$D/bossrush")"
+  BR_PY="$D/.venv/bin/python"
+  [ -x "$BR_PY" ] || BR_PY=$PY
+  "$BR_PY" "$D/tools/make_boss_rush.py" ||
+    die "Boss rush: game_bossrush could not be made from your game files (the messages above say why)."
+fi
 [ -f "$D/$DES_GAME/PS3_GAME/USRDIR/EBOOT.elf" ] || die "No $DES_GAME/PS3_GAME/USRDIR/EBOOT.elf. Run linux/setup.sh first."
 export PS3_HDD0_ROOT="$(winpath "$D/hdd0")"
 export PS3_HDD1_ROOT="$(winpath "$D/hdd1")"
