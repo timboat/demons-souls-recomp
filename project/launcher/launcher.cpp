@@ -64,6 +64,7 @@ struct Settings {
     bool by_letter = false, pin = true;
     bool no_rebuild = false;  // DES_NO_REBUILD: after an update, play the build there is
     bool skip_intro = false;  // DES_SKIP_INTRO: straight to PRESS START
+    bool vrr = false;         // DES_VRR: a G-Sync / FreeSync screen (vsync off may tear, 60 fps vsync off)
     wstring extra;            // NAME=value NAME=value ...
 };
 static Settings g_set;
@@ -141,6 +142,7 @@ static void load_settings() {
     s.pin = ini_int(L"pin_cores", s.pin) != 0;
     s.no_rebuild = ini_int(L"no_rebuild", s.no_rebuild) != 0;
     s.skip_intro = ini_int(L"skip_intro", s.skip_intro) != 0;
+    s.vrr = ini_int(L"vrr", s.vrr) != 0;
     wchar_t buf[2048];
     GetPrivateProfileStringW(L"launcher", L"extra", L"", buf, 2048, g_ini.c_str());
     s.extra = buf;
@@ -163,6 +165,7 @@ static void save_settings() {
     ini_put(L"pin_cores", s.pin);
     ini_put(L"no_rebuild", s.no_rebuild);
     ini_put(L"skip_intro", s.skip_intro);
+    ini_put(L"vrr", s.vrr);
     ini_put(L"extra", s.extra);
     save_keys();
 }
@@ -252,6 +255,7 @@ static wstring game_env(const Settings& s) {
     envif(L"DES_AFFINITY", !s.pin, L"0");
     envif(L"DES_NO_REBUILD", s.no_rebuild, L"1");
     envif(L"DES_SKIP_INTRO", s.skip_intro, L"1");
+    envif(L"DES_VRR", s.vrr, L"1");
     std::vector<std::pair<wstring, wstring>> extra;
     parse_extra(s.extra, &extra, nullptr);
     for (auto& kv : extra)
@@ -366,7 +370,7 @@ static HANDLE start_game(const Settings& s) {
 // ---------------------------------------------------------------------------------------------
 enum {
     ID_PLAY = IDOK, ID_FPS = 100, ID_CUSTOM, ID_FPS_HINT, ID_RES, ID_SHADOW, ID_GAME0, ID_GAME1, ID_GAME2,
-    ID_FULLSCREEN, ID_MOVIES, ID_GOD, ID_RECORD, ID_DUMP, ID_LETTER, ID_PIN, ID_NOREBUILD, ID_SKIPINTRO, ID_EXTRA,
+    ID_FULLSCREEN, ID_MOVIES, ID_GOD, ID_RECORD, ID_DUMP, ID_LETTER, ID_PIN, ID_NOREBUILD, ID_SKIPINTRO, ID_VRR, ID_EXTRA,
     ID_UPDATE, ID_REPORT, ID_CONTROLS, ID_FOLDERS, ID_STATUS,
     ID_F_SAVES = 200, ID_F_LOGS, ID_F_PERF, ID_F_REPLACE, ID_F_DUMP, ID_F_CAPTURES, ID_F_MODELS, ID_F_ROOT,
 };
@@ -405,25 +409,53 @@ static HWND label(const wchar_t* text, int x, int y, int w, int h = 20, int id =
 
 static int banner_h() { return g_banner ? 132 : 44; }
 
+// Auto's frame rate on a screen of R Hz without G-Sync / FreeSync, as PLAY.bat's :auto_fps: 60 when R (or R + 1:
+// 59.94 is reported as 59) is a multiple of 60; 50 on ~100 Hz; else the highest rate 45-75 that R (or else R + 1)
+// is a whole multiple of (144 -> 72, 165 -> 55, 75 -> 75); 60 when there is none.
+static int auto_fps(int R) {
+    if (R % 60 == 0 || (R + 1) % 60 == 0) return 60;
+    if (R >= 95 && R <= 105) return 50;
+    for (int r : {R, R + 1}) {
+        int best = 0;
+        for (int k = 1; k <= 5; k++)
+            if (r % k == 0 && r / k >= 45 && r / k <= 75 && r / k > best) best = r / k;
+        if (best) return best;
+    }
+    return 60;
+}
+// How many refreshes each frame of N fps stays up on R Hz (0 = not a whole number), as PLAY.bat.
+static int refreshes_per_frame(int R, int N) {
+    return N <= 0 ? 0 : R % N == 0 ? R / N : (R + 1) % N == 0 ? (R + 1) / N : 0;
+}
+
 // The line under the frame rate: what the choice does on this screen.
 static void update_fps_hint() {
     int sel = (int)SendMessageW(item(ID_FPS), CB_GETCURSEL, 0, 0);
     EnableWindow(item(ID_CUSTOM), sel == FPS_CUSTOM);
     const int R = g_hz;
     const bool hz100 = R >= 95 && R <= 105;
+    const bool vrr = checked(ID_VRR);
     wchar_t t[256];
     switch (sel) {
-    case FPS_AUTO:
-        if (hz100) swprintf(t, 256, L"Your screen runs at %d Hz, so this is 50 fps: every frame shown exactly 2 refreshes.", R);
-        else swprintf(t, 256, L"60 fps (on a 100 Hz screen it picks 50, which is smoother there). Your screen: %d Hz.", R);
+    case FPS_AUTO: {
+        if (vrr) { swprintf(t, 256, L"60 fps, vsync off: your G-Sync / FreeSync screen shows every frame when it is ready."); break; }
+        const int N = auto_fps(R), K = refreshes_per_frame(R, N);
+        if (K) swprintf(t, 256, L"%d fps on your %d Hz screen: every frame shown exactly %d refresh%s, perfectly even.", N, R,
+                        K, K == 1 ? L"" : L"es");
+        else swprintf(t, 256, L"60 fps. No even rate fits your %d Hz screen; with G-Sync / FreeSync tick the box below.", R);
         break;
+    }
     case FPS_30: swprintf(t, 256, L"The game's original frame rate."); break;
     case FPS_50: swprintf(t, 256, L"Made for 100 Hz screens: every frame shown exactly 2 refreshes."); break;
     case FPS_60:
-        if (hz100) swprintf(t, 256, L"Uneven on your %d Hz screen (Auto picks 50 there).", R);
-        else swprintf(t, 256, L"Smooth on 60, 120 and 240 Hz screens. Your screen: %d Hz.", R);
+        if (vrr) swprintf(t, 256, L"Vsync off: smooth on your G-Sync / FreeSync screen.");
+        else if (refreshes_per_frame(R, 60)) swprintf(t, 256, L"Smooth on 60, 120 and 240 Hz screens like yours (%d Hz).", R);
+        else swprintf(t, 256, L"Uneven on your %d Hz screen (Auto picks %d there).", R, auto_fps(R));
         break;
-    case FPS_UNLIMITED: swprintf(t, 256, L"Up to 240 fps, no vsync. Game speed stays right; frames are not evenly paced."); break;
+    case FPS_UNLIMITED:
+        swprintf(t, 256, vrr ? L"Up to 240 fps, no vsync; your G-Sync / FreeSync screen follows the frame rate."
+                             : L"Up to 240 fps, no vsync. Game speed stays right; frames are not evenly paced.");
+        break;
     default: {
         wchar_t b[16];
         GetWindowTextW(item(ID_CUSTOM), b, 16);
@@ -432,7 +464,8 @@ static void update_fps_hint() {
         // as PLAY.bat: vsync when the refresh (or the next whole Hz up: 99.98 is reported as 99) is a multiple of N
         int K = (R % N == 0) ? R / N : ((R + 1) % N == 0 ? (R + 1) / N : 0);
         if (K >= 1) swprintf(t, 256, L"Vsync on: every frame shown %d of your screen's %d Hz refreshes, perfectly even.", K, R);
-        else swprintf(t, 256, L"Vsync off (%d Hz is not a multiple of %d): fine on G-Sync / FreeSync, may tear otherwise.", R, N);
+        else if (vrr) swprintf(t, 256, L"Vsync off: smooth on your G-Sync / FreeSync screen.");
+        else swprintf(t, 256, L"Vsync off (%d Hz is not a multiple of %d): frames are not evenly paced.", R, N);
     }
     }
     SetWindowTextW(item(ID_FPS_HINT), t);
@@ -489,6 +522,7 @@ static void read_controls() {
     s.pin = checked(ID_PIN);
     s.no_rebuild = checked(ID_NOREBUILD);
     s.skip_intro = checked(ID_SKIPINTRO);
+    s.vrr = checked(ID_VRR);
     GetWindowTextW(item(ID_EXTRA), b, 2048);
     s.extra = b;
 }
@@ -515,6 +549,7 @@ static void write_controls() {
     check(ID_PIN, s.pin);
     check(ID_NOREBUILD, s.no_rebuild);
     check(ID_SKIPINTRO, s.skip_intro);
+    check(ID_VRR, s.vrr);
     SetWindowTextW(item(ID_EXTRA), s.extra.c_str());
     g_loading = false;
     update_fps_hint();
@@ -1118,7 +1153,7 @@ static void create_controls() {
     label(L"Frame rate", L, y + 3, 92);
     HWND c = add(WC_COMBOBOXW, nullptr, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, ID_FPS, X, y, 240, 200,
                  L"How many frames a second the game runs at. The game runs at real speed at every choice.");
-    for (const wchar_t* t : {L"Auto (60, or 50 on a 100 Hz screen)", L"30 fps (the original game)", L"50 fps (100 Hz screens)",
+    for (const wchar_t* t : {L"Auto (an even rate for your screen)", L"30 fps (the original game)", L"50 fps (100 Hz screens)",
                              L"60 fps", L"Unlimited (up to 240, no vsync)", L"Custom..."})
         SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)t);
     add(WC_EDITW, nullptr, WS_BORDER | WS_TABSTOP | ES_NUMBER | ES_CENTER, ID_CUSTOM, X + 248, y + 1, 52, 22,
@@ -1178,6 +1213,11 @@ static void create_controls() {
     add(WC_BUTTONW, L"Skip the intro (straight to PRESS START)", BS_AUTOCHECKBOX | WS_TABSTOP, ID_SKIPINTRO, L, y, 320, 22,
         L"Confirms the autosave notice, fast-forwards the logos and skips the opening movie, so the game starts at "
         L"the title screen in a few seconds. The story movies later on still play.");
+    y += 26;
+    add(WC_BUTTONW, L"My screen has G-Sync / FreeSync", BS_AUTOCHECKBOX | WS_TABSTOP, ID_VRR, L, y, 320, 22,
+        L"Tick this if your monitor has G-Sync, FreeSync or another variable refresh rate (and it is on). The game "
+        L"then lets the monitor follow its frames: 60 fps is smooth at any refresh rate. Without such a monitor "
+        L"leave it off: the picture would tear.");
     y += 34;
 
     label(L"Extra settings", L, y + 3, 92);
@@ -1203,7 +1243,7 @@ static void create_controls() {
     label(L"", L, y, W, 20, ID_STATUS);
 }
 
-static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 34 + 26 * 4 + 34 + 36 + 54 + 36 + 20 + 12; }
+static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 34 + 26 * 5 + 34 + 36 + 54 + 36 + 20 + 12; }
 
 static LRESULT CALLBACK wndproc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
@@ -1237,6 +1277,7 @@ static LRESULT CALLBACK wndproc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
                 SendMessageW(item(ID_CUSTOM), EM_SETSEL, 0, -1);
             }
         } else if (id == ID_CUSTOM && code == EN_CHANGE && !g_loading) update_fps_hint();
+        else if (id == ID_VRR && code == BN_CLICKED) update_fps_hint();
         else if (id == ID_RES && code == CBN_SELCHANGE)
             EnableWindow(item(ID_SHADOW), SendMessageW(item(ID_RES), CB_GETCURSEL, 0, 0) > 0);
         return 0;

@@ -118,7 +118,8 @@ straight away, for a shortcut. Without the launcher, set the switches before run
 
 | launcher option | switch | what it does |
 |---|---|---|
-| *Frame rate* | `DES_FPS=30\|50\|60\|unlimited\|31-240` | Auto = 60, or 50 on a ~100 Hz screen. Game speed is right at any rate. A rate that divides your refresh rate is perfectly even; others turn vsync off. |
+| *Frame rate* | `DES_FPS=30\|50\|60\|unlimited\|31-240` | Auto = an even rate for your screen: 60 on 60 / 120 / 240 Hz, 50 on 100 Hz, 72 on 144 Hz, 55 on 165 Hz, 75 on 75 Hz. Game speed is right at any rate. A rate that divides your refresh rate is perfectly even; others turn vsync off. |
+| *My screen has G-Sync / FreeSync* | `DES_VRR=1` | lets a variable-refresh monitor follow the frames (vsync-off frames may tear, so the monitor shows each when it is ready); Auto is then 60 at any refresh rate. Leave it off on other screens: the picture would tear. |
 | *Resolution* | `DES_RES_SCALE=2` (up to 4) | renders above 1280x720; *Sharper shadows* = `LD_RES_SCALE_SHADOW=1` |
 | *Game* | `DES_GAME=game_remaster` / `game_mod` | the PC Remaster mod or your imported models (see below) |
 | *Dump textures* | `LD_TEX_DUMP=1` | saves every texture drawn, for texture packs |

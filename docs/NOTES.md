@@ -2337,6 +2337,26 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked: the 2x run with the fix; the user's test at 2x ("way way way way better"; a flashing menu after
       quitting to it from a game is a separate, older bug, not this one); the patch section
       rebuilt from ps3recomp's blob + main's section and applied both ways (core.autocrlf=true / input).
+105. **Even frame pacing on 144 / 165 / 75 Hz screens; G-Sync / FreeSync (2026-11-07; a YouTube review of the port
+    named frame timing and pacing as its biggest issue; the user picked 72 fps for 144 Hz):**
+    - Auto was 60 (50 on ~100 Hz). 60 does not divide 144 or 165 Hz: each frame stayed up 2 or 3 refreshes in turn
+      (2.4 on 144, 3-3-3-2 on 165), judder on camera turns -- the most common gaming monitors. The custom rates
+      already made every frame stay up exactly K refreshes when K divides the refresh (vsync interval K, fix 43);
+      Auto now picks such a rate (PLAY.bat :auto_fps, linux/play.sh auto_fps, launcher auto_fps): 60 when the
+      refresh (or the next whole Hz, as Windows reports 59.94 / 143.98 rounded down) is a multiple of 60; 50 on ~100
+      Hz; else the highest rate 45-75 the refresh is a whole multiple of (144 -> 72, 165 -> 55, 75 -> 75, 90 -> 45,
+      280 -> 70); 60 when none (85, 170 -> 57 via 171). A Steam Deck stays 30.
+    - G-Sync / FreeSync could not work: the launcher said vsync-off rates were "fine on G-Sync / FreeSync", but in
+      a window a variable-refresh monitor needs a swap chain that allows tearing and DXGI_PRESENT_ALLOW_TEARING on
+      a sync-interval-0 Present; without them the flip model composes each frame at the next refresh.
+      LD_ALLOW_TEARING=1 (rsx_live_draw.c: IDXGIFactory5::CheckFeatureSupport, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING at
+      creation and in ResizeBuffers, the present flag when the interval is 0). The launcher's "My screen has
+      G-Sync / FreeSync" (DES_VRR=1, launcher.ini vrr) sets it and makes Auto 60 with vsync off. Off by default:
+      on a screen without VRR it tears.
+    - Checked: the Auto choice for 20 refresh rates in both scripts (the batch code itself, extracted into a test
+      file) and the launcher's hint; tearing on (this PC supports it) at 60 fps vsync off, with a window resize
+      (LD_TEST_CLIENT): no Present / ResizeBuffers failure, 60.0 fps. Not checked here: a 144 / 165 Hz or VRR
+      screen (the user's is 100 Hz, where Auto stays 50).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

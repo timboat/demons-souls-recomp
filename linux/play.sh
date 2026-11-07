@@ -116,12 +116,25 @@ esac
 # Refresh rate of the active display (xrandr marks it with *); 60 when it cannot tell (gamescope).
 REFRESH=$(xrandr --current 2>/dev/null | sed -n 's/.* \([0-9][0-9]*\)\.[0-9]*\*.*/\1/p' | head -n 1)
 REFRESH=${REFRESH:-60}
-if [ -z "${DES_FPS:-}" ]; then
-  if [ -n "$DECK" ]; then DES_FPS=30
-  elif [ "$REFRESH" -ge 95 ] && [ "$REFRESH" -le 105 ]; then DES_FPS=50
-  else DES_FPS=60
-  fi
-fi
+# Auto, as PLAY.bat: 30 on a Steam Deck; 60 with DES_VRR=1 (G-Sync / FreeSync) or when the refresh (or the next
+# whole Hz) is a multiple of 60; 50 on ~100 Hz; else the highest rate 45-75 the refresh is a whole multiple of
+# (144 -> 72, 165 -> 55, 75 -> 75), every frame then shown the same number of refreshes; 60 when there is none.
+auto_fps() {
+  [ -n "$DECK" ] && { echo 30; return; }
+  [ "${DES_VRR:-}" = 1 ] && { echo 60; return; }
+  if [ $((REFRESH % 60)) -eq 0 ] || [ $(((REFRESH + 1) % 60)) -eq 0 ]; then echo 60; return; fi
+  if [ "$REFRESH" -ge 95 ] && [ "$REFRESH" -le 105 ]; then echo 50; return; fi
+  for R in "$REFRESH" $((REFRESH + 1)); do
+    best=0
+    for K in 1 2 3 4 5; do
+      N=$((R / K))
+      if [ $((R % K)) -eq 0 ] && [ "$N" -ge 45 ] && [ "$N" -le 75 ] && [ "$N" -gt "$best" ]; then best=$N; fi
+    done
+    [ "$best" -gt 0 ] && { echo "$best"; return; }
+  done
+  echo 60
+}
+if [ -z "${DES_FPS:-}" ]; then DES_FPS=$(auto_fps); fi
 FPS_NOTE=
 case "$DES_FPS" in
   30) ;;
@@ -144,6 +157,13 @@ case "$DES_FPS" in
       fi
     done ;;
 esac
+# DES_VRR=1 (G-Sync / FreeSync screen): vsync-off presents may tear, so a variable-refresh monitor shows every
+# frame when it is ready; 60 fps then runs vsync off too. Not for other screens: without VRR it tears.
+if [ "${DES_VRR:-}" = 1 ]; then
+  export LD_ALLOW_TEARING=1
+  [ "$DES_FPS" = 60 ] && export LD_PRESENT_INTERVAL=0
+  FPS_NOTE="$FPS_NOTE (G-Sync / FreeSync)"
+fi
 echo "Running at $DES_FPS fps$FPS_NOTE."
 
 # Frame-timing recording, as in PLAY.bat: F8 in the game marks a stutter; perf/<date_time>/perf.txt.

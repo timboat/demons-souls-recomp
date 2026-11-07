@@ -76,10 +76,9 @@ rem just sets DES_FPS and calls this file.
 set "DES_REFRESH="
 for /f %%R in ('powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Where-Object CurrentRefreshRate | Select-Object -First 1).CurrentRefreshRate"') do set "DES_REFRESH=%%R"
 if "%DES_REFRESH%"=="" set "DES_REFRESH=60"
-if "%DES_FPS%"=="" (
-  set "DES_FPS=60"
-  if %DES_REFRESH% GEQ 95 if %DES_REFRESH% LEQ 105 set "DES_FPS=50"
-)
+rem Auto (DES_FPS unset): an even rate for this screen (:auto_fps below): 60 on 60 / 120 / 240 Hz, 50 on
+rem 100 Hz, 72 on 144 Hz, 55 on 165 Hz, 75 on 75 Hz; with DES_VRR=1 (G-Sync / FreeSync) always 60.
+if "%DES_FPS%"=="" call :auto_fps
 if "%DES_FPS%"=="60" (
   set "DES_60FPS=1"
   set "PS3_VBLANK_HZ=120"
@@ -106,6 +105,14 @@ set "FPS_NOTE="
 set "DES_CUSTOM=1"
 for %%F in (30 50 60 unlimited) do if /i "%DES_FPS%"=="%%F" set "DES_CUSTOM="
 if defined DES_CUSTOM call :custom_fps || exit /b 1
+rem DES_VRR=1 (the launcher's "G-Sync / FreeSync screen" box): vsync-off presents may tear (LD_ALLOW_TEARING),
+rem which is what lets a variable-refresh monitor show every frame the moment it is ready, at any refresh
+rem rate; 60 fps then runs vsync off too. Not for other screens: without VRR it tears.
+if "%DES_VRR%"=="1" (
+  set "LD_ALLOW_TEARING=1"
+  if "%DES_FPS%"=="60" set "LD_PRESENT_INTERVAL=0"
+  set "FPS_NOTE=%FPS_NOTE% (G-Sync / FreeSync)"
+)
 echo Running at %DES_FPS% fps%FPS_NOTE%.
 rem Frame-timing recording (NOTES fix 46), on for every run (~25 MB an hour, no visible cost): press
 rem F8 in the game window right after you see a stutter -- the window title counts the marks. Saved to
@@ -234,6 +241,27 @@ for %%P in (ps3recomp-local.patch lifted-code.patch) do (
   if not exist "%D%\port\build_opt\built\%%P" set "STALE=1"
   fc /b "%D%\patches\%%P" "%D%\port\build_opt\built\%%P" >nul 2>&1 || set "STALE=1"
 )
+exit /b 0
+
+:auto_fps
+set "DES_FPS=60"
+if "%DES_VRR%"=="1" exit /b 0
+set /a "R1=DES_REFRESH+1, M0=DES_REFRESH %% 60, M1=R1 %% 60"
+if %M0% EQU 0 exit /b 0
+if %M1% EQU 0 exit /b 0
+if %DES_REFRESH% GEQ 95 if %DES_REFRESH% LEQ 105 (set "DES_FPS=50" & exit /b 0)
+set "AUTO_BEST=0"
+for %%K in (1 2 3 4 5) do call :auto_try %%K %DES_REFRESH%
+if %AUTO_BEST% EQU 0 for %%K in (1 2 3 4 5) do call :auto_try %%K %R1%
+if %AUTO_BEST% GTR 0 set "DES_FPS=%AUTO_BEST%"
+exit /b 0
+rem :auto_try <k> <refresh>: refresh / k when it divides evenly into 45-75 fps and beats the best so far.
+:auto_try
+set /a "AT_M=%2 %% %1, AT_N=%2 / %1"
+if not %AT_M%==0 exit /b 0
+if %AT_N% LSS 45 exit /b 0
+if %AT_N% GTR 75 exit /b 0
+if %AT_N% GTR %AUTO_BEST% set "AUTO_BEST=%AT_N%"
 exit /b 0
 
 :custom_fps
