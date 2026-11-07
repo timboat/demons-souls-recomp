@@ -6,7 +6,9 @@ The zip (perf\\<run>\\report_<run>.zip) holds:
   report.txt    the summary tools/perf_report.py prints for the recording (hitches, F8 marks, causes)
   perf.txt      the recording itself (only the minutes around your F8 marks if the whole one is too big)
   system.txt    Windows version, CPU, RAM, GPU + driver, monitor refresh, this port's commit
-  log_tail.txt  the last 400 lines of logs\\last_run_err.txt when that log is from the same run
+  log_head.txt / log_tail.txt  the first / last 400 lines of logs\\last_run_err.txt, out_head.txt / out_tail.txt
+                the same of logs\\last_run_out.txt (the console log: decoders, save data, start-up), when they
+                are from the same run; log_notable.txt their error / failure / warning lines
 Your Windows user name is replaced by %USERNAME% in everything, so the zip has no personal paths.
 """
 import ctypes, glob, io, os, platform, re, subprocess, sys, zipfile
@@ -15,6 +17,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ISSUES = 'https://github.com/timboat/demons-souls-recomp/issues/new/choose'
 LIMIT = 24 * 1024 * 1024          # GitHub takes attachments up to 25 MB
 KEEP_AROUND_MARK_S = 90            # seconds of recording kept before / after each F8 mark when trimming
+# error-looking log lines for log_notable.txt; the routine per-wait / per-frame status lines (which carry counters
+# such as "decodefail=0" and "timeout=0") are left out
+NOTABLE = re.compile(r'\berror|\bfail(ed|ure|s)?\b|not found|missing|exception|crash|abort|null-read|exit-chain'
+                     r'|\bwarn|refus|reject|cannot|could not|timed out|\bstall|unsupported(?!=)|unknown', re.I)
+NOT_NOTABLE = re.compile(r'^\[(WAIT|evt|live-draw\] frame)')
 
 
 def scrub(text, names=True):
@@ -106,13 +113,27 @@ def main():
                        capture_output=True, text=True)
     report = scrub(r.stdout + (('\n' + r.stderr) if r.stderr.strip() else ''))
 
-    log = os.path.join(ROOT, 'logs', 'last_run_err.txt')
-    tail = ''
-    if os.path.isfile(log) and os.path.getmtime(log) >= os.path.getmtime(run) - 5:
-        with open(log, 'rb') as f:
+    logs = {}   # name in the zip -> text
+    notable = []
+    for src, tag in (('last_run_err.txt', 'log'), ('last_run_out.txt', 'out')):
+        p = os.path.join(ROOT, 'logs', src)
+        if not (os.path.isfile(p) and os.path.getmtime(p) >= os.path.getmtime(run) - 5):
+            continue
+        with open(p, 'rb') as f:
+            head = f.read(4 * 1024 * 1024).decode('utf-8', 'replace').splitlines()
             f.seek(0, 2); n = f.tell(); f.seek(max(0, n - 4 * 1024 * 1024))
-            data = f.read().decode('utf-8', 'replace').splitlines()[-400:]
-        tail = scrub('\n'.join(data) + '\n')
+            tail_lines = f.read().decode('utf-8', 'replace').splitlines()
+        logs[tag + '_head.txt'] = scrub('\n'.join(head[:400]) + '\n')
+        logs[tag + '_tail.txt'] = scrub('\n'.join(tail_lines[-400:]) + '\n')
+        # A black screen or an early stop is usually explained near the start; the error lines from both ends
+        # (deduplicated, in order) say what went wrong without the full log.
+        seen = set()
+        for line in head + tail_lines:
+            if NOTABLE.search(line) and not NOT_NOTABLE.match(line) and line not in seen:
+                seen.add(line)
+                notable.append('%s: %s' % (src, line))
+    if notable:
+        logs['log_notable.txt'] = scrub('\n'.join(notable[:500]) + '\n')
 
     out = os.path.join(run, 'report_%s.zip' % name)
 
@@ -121,8 +142,8 @@ def main():
             z.writestr('report.txt', note + report)
             z.writestr('perf.txt', perf_part)
             z.writestr('system.txt', system_info(perf_text))
-            if tail:
-                z.writestr('log_tail.txt', tail)
+            for k, v in logs.items():
+                z.writestr(k, v)
     write(perf_text, '')
     if os.path.getsize(out) > LIMIT:
         part, nm = trim(perf_text)
