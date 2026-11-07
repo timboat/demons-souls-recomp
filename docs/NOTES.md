@@ -2223,6 +2223,18 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       instead", no EBOOT.elf left behind.
     - What this removes for most players: the ~40 MB RPCS3 download, its Visual C++ runtime check, the Vulkan
       driver hiding and its administrator / virtual-machine crashes (NOTES fixes 81-83).
+98. **Updates rebuild after Python was uninstalled (2026-11-06, reported on Discord by zackcage6: "since i
+    uninstalled python and other stuff ... i thought the build will run the game normally cuz its recompiled
+    already"):**
+    - `.venv` points at the Python that made it. With that Python uninstalled, BUILD.bat (and so Play's rebuild
+      after an update) remade `.venv` only from an installed Python or SETUP's portable `deps\python`; with
+      neither it stopped with "Python 3.10 or newer is needed: run SETUP.bat".
+    - SETUP's download of python.org's portable Python (the NuGet package, pinned SHA-256) moved to
+      `setup\get_python.bat`; SETUP.bat and BUILD.bat both call it, so BUILD now fetches it itself.
+    - Checked in scratch copies with no Python on PATH (no `py`, no `python`) and a `.venv` whose base Python is
+      gone: BUILD.bat downloaded Python 3.13.17 into deps\python, remade `.venv`, installed the requirements and
+      ran setup\build.py; also in a folder named "Demon's Souls test". SETUP.bat with DS_TEST_NO_PYTHON=1: same
+      download, "Creating the Python environment", setup.py ran.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

@@ -29,6 +29,8 @@ where py >nul 2>nul && py -3 -c "import sys; sys.exit(0 if sys.version_info >= (
 if not defined PY (
   where python >nul 2>nul && python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul && set "PY=python"
 )
+rem Neither (Python was uninstalled after SETUP): the same portable one SETUP.bat downloads.
+if not defined PY if not exist "deps\python\tools\python.exe" call "%CD%\setup\get_python.bat"
 if not defined PY if exist "deps\python\tools\python.exe" set "PY=deps\python\tools\python.exe"
 if not defined PY goto :no_python
 rmdir /s /q ".venv"
@@ -36,7 +38,8 @@ rmdir /s /q ".venv"
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r setup\requirements.txt || goto :venv_failed
 exit /b 0
 :no_python
-echo Python 3.10 or newer is needed: run SETUP.bat, it can install it.
+echo Python 3.10 or newer is needed and the portable one could not be downloaded
+echo (https://www.python.org/downloads/ - tick "Add python.exe to PATH"), then run this again.
 pause
 exit /b 1
 :venv_failed

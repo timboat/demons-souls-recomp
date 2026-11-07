@@ -24,7 +24,7 @@ if not defined PY (
   where python >nul 2>nul && python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul && set "PY=python"
 )
 :portable_python
-if not defined PY if not exist "deps\python\tools\python.exe" call :get_python
+if not defined PY if not exist "deps\python\tools\python.exe" call "%KIT%\setup\get_python.bat"
 if not defined PY if exist "deps\python\tools\python.exe" set "PY=deps\python\tools\python.exe"
 if not defined PY goto :need_python
 if defined DS_TEST_NO_GIT goto :portable_git
@@ -51,16 +51,6 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 goto :failed
 echo.
 pause
-exit /b 0
-
-:get_python
-echo No Python 3.10 or newer is installed: downloading a portable one (python.org's own build, 15 MB) into
-echo deps\python. Nothing is installed.
-pushd "%SystemRoot%"
-set "DS_FETCH=%KIT%\setup\fetch.ps1"
-set "DS_DEST=%KIT%\deps\python"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create([IO.File]::ReadAllText($env:DS_FETCH))) -Url 'https://api.nuget.org/v3-flatcontainer/python/3.13.17/python.3.13.17.nupkg' -Sha256 dce409744b088f94c6e37ba41f8100c384c27e029e843237364c602d30d475e5 -Dest $env:DS_DEST -Name 'Python 3.13.17'; exit $LASTEXITCODE"
-popd
 exit /b 0
 
 :get_git
