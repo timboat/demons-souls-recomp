@@ -36,9 +36,8 @@ Hit a stutter or crash? Press **F8** when it happens and run `REPORT.bat` afterw
   Git, or Visual Studio 2022 (*Desktop development with C++*) + LLVM 17+ is used instead.
 - A plain folder path: no `[ ]` or `&`.
 
-**macOS (Apple Silicon):** experimental native arm64 / Metal build by erikomis; see [docs/MACOS.md](docs/MACOS.md).
-**Linux / Steam Deck:** an AppImage kit builds the port and runs it through Proton; see [docs/LINUX.md](docs/LINUX.md).
-It plays on Ubuntu 24.04 and on the Steam Deck, though the Deck is not smooth yet and loads are slow.
+**Linux / Steam Deck** and **macOS (Apple silicon):** see their install guides below
+([Linux](#linux--steam-deck), [macOS](#macos-apple-silicon)).
 
 ## Build it (one time)
 
@@ -61,6 +60,45 @@ It plays on Ubuntu 24.04 and on the Steam Deck, though the Deck is not smooth ye
 
 \* on a fast 16-core PC. The compiler's full output goes to `logs\build_last.txt`. If something fails, fix
 what it says and run SETUP.bat again: finished steps are skipped.
+
+### Linux / Steam Deck
+
+The Windows build runs through Proton (Steam's compatibility layer), built on your PC from your disc image.
+It plays on Ubuntu 24.04 and the Steam Deck; the Deck is not smooth yet and loads are slow. You need a
+Vulkan GPU driver, about **25 GB** free, and an internet connection for the first run.
+
+1. Download `DemonsSoulsRecomp-Setup-x86_64.AppImage`: GitHub → **Actions** → *Linux AppImage* → the newest
+   run → **Artifacts** (a zip with the AppImage inside). Make it executable (`chmod +x`, or right-click →
+   Properties → Permissions → *Is executable*). On a Steam Deck, do this in desktop mode.
+2. Run it. It asks for your disc image (a file picker, or drag the file in), then the disc key if needed,
+   and runs the same six steps as SETUP.bat into `~/DemonsSoulsRecomp` (`DS_HOME=/other/folder` puts it
+   elsewhere, e.g. on an SD card). It asks before each download, including Microsoft's SDK license. The
+   first build takes 10–30 minutes on a desktop and 1–2 hours on a Steam Deck.
+3. It offers to start the game; the first start sets up Proton (a few hundred MB). To play later, run the
+   AppImage again (it updates and rebuilds what changed) or `~/DemonsSoulsRecomp/linux/play.sh`.
+
+Settings are the same switches as on Windows, e.g. `DES_FPS=60 ./DemonsSoulsRecomp-Setup-x86_64.AppImage play`
+(a Steam Deck defaults to 30 fps). **Steam Deck game mode:** add `~/DemonsSoulsRecomp/linux/play.sh` as a
+non-Steam game, with *Start in* set to `~/DemonsSoulsRecomp` and no forced Proton version. **From a git
+checkout** instead: install Python 3.10+, git, and clang + lld 17 or newer, then run
+`sh linux/setup.sh /path/to/image.iso` and `sh linux/play.sh`. Troubleshooting: [docs/LINUX.md](docs/LINUX.md).
+
+### macOS (Apple silicon)
+
+**Experimental:** a native arm64 build on Metal (by erikomis), played through the start of the Tutorial so
+far. You need about **14 GB** free.
+
+1. Install Apple's command-line tools (`xcode-select --install`), then with [Homebrew](https://brew.sh):
+   `brew install cmake ninja sdl2 glslang spirv-cross ffmpeg python@3.12` (FFmpeg is for the movies).
+2. Get this repo (`git clone`, or the release ZIP) and, in its folder, run
+   `DES_ISO="/path/to/Demon's Souls (USA).iso" mac/install.sh`. A Redump image also needs
+   `DES_KEY=<32 hex digits or the .dkey file>`. It extracts the game, decrypts the EBOOT, recompiles and
+   builds; after a failure or a quit, run it again and it continues where it stopped.
+3. Play with `mac/play.sh`. There is no on-screen keyboard yet: `DES_NAME=<name> mac/play.sh` names your
+   character. `DES_FPS=30` gives the console's 30 fps (60 is the default).
+
+`mac/launcher/` has a desktop app that does all of this without a terminal (see its README). Controls,
+settings and what is still missing: [docs/MACOS.md](docs/MACOS.md).
 
 ## Updating
 
