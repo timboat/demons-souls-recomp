@@ -2357,6 +2357,46 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       file) and the launcher's hint; tearing on (this PC supports it) at 60 fps vsync off, with a window resize
       (LD_TEST_CLIENT): no Present / ResizeBuffers failure, 60.0 fps. Not checked here: a 144 / 165 Hz or VRR
       screen (the user's is 100 Hz, where Auto stays 50).
+111. **Latria 4-2 53.5 -> 55.7 fps on a 5800X: the SPU dispatcher's no-op PUTLLC skips the lock-line lock
+     (2026-11-07, 5800X + RTX 3070, 60 Hz):**
+    - Baseline on main 5a72f0d (this PC): the Palace heavy spot (fixes 75/77) is at the 60 cap now (59.7 / 59.4,
+      p99 21.6 / 21.9 ms), so Latria 4-2 (fixes 88/90, DES_WARP_AT=140:4,0,998, 150-200 s) is the benchmark: 51.0 /
+      52.5 fps, HighGraphics 86-88%, 32.6% of its stack samples in the 0x9023 wait (func_00ACAFA8 + usleep), 10.9%
+      in semaphores. Dispatcher ("spu job") RIP: lifted code 49%, spu_channels 32% (spu_wrch 16.6%), coherency 11%.
+    - Where the dispatcher's time goes (rdtsc per state in its lifted loop, TEMP probe): the queue protocol --
+      4808 -> 3C90/3D18 bookkeeping -> 4618 (WrEventMask 0x400, GETLLAR of the control line 0x01B51080 into LS
+      0x13480) -> 4694 (producer word vs the cursor at LS 0x13400; empty -> 5120: RdEventStat, WrEventAck, GETLLAR
+      again; else PUTLLC of the unchanged line, a 128-byte GET of the entry line, the entry to LS 0x13560, cursor
+      += 16, a 16-byte PUT of the cursor via C358/C438/C490/C408/C418, jump table on the command byte) -- 60%; the
+      command handlers 28% (command 33: 11%, 3.5 us each, ~32k/s; 34: 3%; 7 and 8, 83% of all commands: 46 ns
+      each); the empty-queue wait 12%. Command 35 (0x9023) takes 3C90's 4130 branch, which PUTs the done words.
+    - Fix (runtime/spu/spu_channels.c, spu_coherency.c/.h; lifted-code.patch: spu_0001_at_0176C200 4694): that
+      PUTLLC goes through spu_wrch_light. When the SPU did not change the reserved data it cannot change memory:
+      it succeeds iff memory still equals the snapshot (the locked compare's answer), PPU reservations on the
+      line end first (a stwcx. after it fails as against the exact commit), the reservation is consumed, the
+      commit hooks run, and only when another SPU slot (or an unslotted context) or a watch could be on the line
+      does it take the lock and notify (spu_coh_line_needs_notify). Diagnostics (spu_wrch_diag_on), the barrier
+      sync watch, SPU_LOCKGUARD and SPU_COH_STATS keep the exact path; DES_DISPQ_LIGHT=0 = off. The per-thread
+      flag is taken and cleared at spu_mfc_atomic's entry: the taskset-shutdown halt longjmps out of it.
+    - A/B at Latria 4-2 (same exe, off / on, alternating, 3 each): 53.5 / 53.5 / 53.4 -> 55.8 / 56.1 / 55.1 fps,
+      p99 23.5 / 23.3 / 24.8 -> 22.2 / 22.6 / 22.6 ms, frames over 25 ms 14 / 15 / 24 -> 11 / 6 / 12, HighGraphics
+      82-84% -> 74-81%; the reviewed build, 2 each: 54.7 / 55.1 -> 57.1 / 56.8. Tour (Shrine 3-1 x2, Latria 4-1 / 4-2, Boletaria 1-1, Valley 5-1, the Nexus; camera turns
+      + a walk at each): every stop 58.8-60 mean, Latria 4-2 58.0 -> 59.3 (worst second 42 -> 53), no aborts or
+      halts either way. test_spu_coherency 195 passed, test_mfc_resume_elements OK in all four modes.
+    - Review (2 agents: atomic semantics; code paths / builds / diagnostics): no semantic defect -- every reported
+      success or failure matches one the exact path could give, nothing is lost. Fixed from it: the PPU break
+      moved before the compare; SPU_COH_STATS, the barrier sync watch and SPU_LOCKGUARD take the exact path; the
+      PPU break goes through spu_coh_break_ppu_line (no second, non-weak declaration of ppu_resv_break_line).
+      Accepted (latency only): a store racing the compare can leave a stale SPU_EVENT_LR (one extra empty-queue
+      pass); a late notify can cost a peer one retry.
+    - Tried, dropped: a light GETLLAR too (copy + snapshot without publishing a holder slot or fencing). The
+      dispatcher then read a bad queue entry within a minute -- HALT-ASSERT at 0x0C614 (a DMA helper, r3 =
+      0xC4FCC970) or at 0x03E88, then HighGraphics spins in the 0x9023 wait forever. Light PUTLLC alone never did
+      (DES_DISPQ_LIGHT bit test). Not understood yet: something depends on the published reservation beyond the
+      LR event (rdch/rchcnt of RdEventStat already poll the snapshot). A first version also left the flag set
+      after the halt longjmp, which made every later atomic on that host thread light.
+    - Next: a native pop for the queue protocol (and commands 7 / 8), on an A/B switch with a lifted-vs-native
+      compare mode, once the GETLLAR dependency above is understood.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
