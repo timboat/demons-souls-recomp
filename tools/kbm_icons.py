@@ -7,8 +7,11 @@ sheets), each PS3 button cell redrawn as the key / mouse button it is on the key
 Letters are the game's own serif font (dsfont24); key plates, mice and arrows are drawn here in the colours of
 the game's own button art. Nothing from the game is in this script.
 
-BUILD.bat runs it after a build (setup/build.py kbm_icons). By hand:
-    .venv\\Scripts\\python.exe tools\\kbm_icons.py [<game>\\PS3_GAME\\USRDIR] [<out folder>] [--preview]
+The keys are your bindings (fix 103): the launcher's Controls window keeps them in launcher.ini [controls]
+(the defaults are the souls layout), and each cell shows the key its button is bound to. keys.txt in the output
+folder records the bindings drawn; --if-stale only draws again when they or the art (VERSION) changed -- the
+launcher runs that before Play, BUILD.bat after a build (setup/build.py kbm_icons). By hand:
+    .venv\\Scripts\\python.exe tools\\kbm_icons.py [<game>\\PS3_GAME\\USRDIR] [<out folder>] [--preview] [--if-stale]
 defaults game\\PS3_GAME\\USRDIR and textures\\kbm next to this repo. Needs Pillow (pip install Pillow).
 --preview also writes <out>\\preview.png: each atlas's original cells above the new ones, 4x.
 """
@@ -17,13 +20,107 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import souls_formats as sf
 from PIL import Image, ImageDraw, ImageFilter
 
-VERSION = 1                                # bump when the art changes: BUILD.bat then makes the files again
+VERSION = 2                                # bump when the art changes: BUILD.bat then makes the files again
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 U = os.path.join(ROOT, 'game', 'PS3_GAME', 'USRDIR')
 SS = 8                                     # supersampling for drawn shapes
 CREAM = (232, 222, 196)                    # the game's button lettering (Menu00 L1 / Menu08 L)
 GOLD = (236, 176, 64)                      # the game's d-pad arrows
 PLATE_TOP, PLATE_BOT = (58, 58, 62), (14, 14, 16)
+
+# ---- the key bindings (cellPad.c s_kb: the same action names and defaults; key names as pad_vk_from_name)
+DEFAULT_KEYS = {'attack': ['LMB'], 'strong_attack': ['SHIFT'], 'block': ['RMB'], 'parry': ['CTRL'],
+                'roll': ['SPACE'], 'interact': ['E'], 'two_hand': ['F'], 'use_item': ['R'],
+                'lock_on': ['TAB', 'MMB'], 'l3': ['C'], 'dpad_up': ['UP'], 'dpad_down': ['DOWN'],
+                'dpad_left': ['LEFT'], 'dpad_right': ['RIGHT'], 'start': ['ENTER'], 'select': ['BACK']}
+KEY_TEXT = {'CTRL': 'Ctrl', 'RCTRL': 'Ctrl', 'ALT': 'Alt', 'RALT': 'Alt', 'TAB': 'Tab', 'CAPS': 'Caps',
+            'INS': 'Ins', 'DEL': 'Del', 'HOME': 'Home', 'END': 'End', 'PGUP': 'PgUp', 'PGDN': 'PgDn',
+            'MB4': 'M4', 'MB5': 'M5', 'MINUS': '-', 'EQUALS': '=', 'LBRACKET': '[', 'RBRACKET': ']',
+            'BACKSLASH': '\\', 'SEMICOLON': ';', 'QUOTE': "'", 'COMMA': ',', 'PERIOD': '.', 'SLASH': '/',
+            'GRAVE': '`', 'ENTER': 'Enter', 'BACK': 'Backspace', 'SPACE': 'Space', 'SHIFT': 'Shift',
+            'RSHIFT': 'Shift', 'LMB': 'LMB', 'RMB': 'RMB', 'MMB': 'MMB'}
+KEYS = dict(DEFAULT_KEYS)
+
+
+def read_bindings(ini=None):
+    """launcher.ini [controls]: action = KEY or KEY+KEY ('' = unbound); a missing action keeps its default."""
+    import configparser
+    keys = {a: list(v) for a, v in DEFAULT_KEYS.items()}
+    ini = ini or os.path.join(ROOT, 'launcher.ini')
+    cp = configparser.ConfigParser(interpolation=None)
+    try:
+        cp.read(ini, encoding='utf-16') if open(ini, 'rb').read(2) in (b'\xff\xfe', b'\xfe\xff') else cp.read(ini)
+    except (OSError, configparser.Error, UnicodeError):
+        return keys
+    if cp.has_section('controls'):
+        for a in keys:
+            if cp.has_option('controls', a):
+                keys[a] = [k.strip().upper() for k in cp.get('controls', a).split('+') if k.strip()][:2]
+    return keys
+
+
+def signature(keys):
+    return ';'.join('%s=%s' % (a, '+'.join(keys[a])) for a in sorted(keys))
+
+
+def first(action):
+    k = KEYS.get(action) or []
+    return k[0] if k else None
+
+
+def text_of(k):
+    return KEY_TEXT.get(k) or (('Num' + k[3:]) if k.startswith('NUM') else k)
+
+
+def icon(action, style='font', wide=False, menu_frac=0.62):
+    """The icon maker for the key an action is bound to. style 'font': the text font page; 'menu': a Menu00 / 08
+    plate cell (mice big on a black plate); 'emboss': the Menu00 L2 / R2 engraved text."""
+    k = first(action)
+    if k is None:   # unbound: an empty plate
+        return lambda w, h: down(plate(w, h), w, h)
+    if style == 'emboss':
+        return emboss(text_of(k) if k not in ('LMB', 'RMB', 'MMB') else {'LMB': 'LMB', 'RMB': 'RMB', 'MMB': 'MMB'}[k])
+    mouse = {'LMB': 'left', 'RMB': 'right', 'MMB': 'middle'}.get(k)
+    if mouse:
+        if style == 'menu':
+            return menu_plate_icon(lambda w, h: mouse_icon(w, h, mouse, big=True))
+        return lambda w, h: mouse_icon(w, h, mouse)
+    if k in ('UP', 'DOWN', 'LEFT', 'RIGHT'):
+        return lambda w, h: arrow_key(w, h, [k.lower()])
+    if not wide and k in ('SPACE', 'SHIFT', 'RSHIFT', 'ENTER', 'BACK'):
+        kind = {'SPACE': 'space', 'SHIFT': 'shift', 'RSHIFT': 'shift', 'ENTER': 'enter', 'BACK': 'back'}[k]
+        return lambda w, h: symbol_key(w, h, kind)
+    t = text_of(k)
+    frac = 0.52 if wide else 0.62 if len(t) == 1 else 0.46
+    if style == 'menu':
+        return lambda w, h: key_icon(w, h, t, menu_frac if len(t) == 1 else 0.46)
+    return kc(t, frac)
+
+
+def dpad_icon(dirs):
+    """The d-pad cells: the arrow cluster while the d-pad is on the arrow keys, else key plates in that layout."""
+    ks = [first('dpad_' + d) for d in dirs]
+    if ks == [d.upper() for d in dirs]:
+        return lambda w, h: arrow_key(w, h, dirs)
+    def f(w, h):
+        W, H = w * SS, h * SS
+        im = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+        k = w // 2
+        pos = {'up': (W / 4, 0), 'down': (W / 4, H / 2), 'left': (0, H / 2), 'right': (W / 2, H / 2)}
+        if len(dirs) == 4:   # three plates side by side below one: labels must not overlap
+            k = w // 3
+            pos = {'up': (W / 3, 0), 'left': (0, H / 2), 'down': (W / 3, H / 2), 'right': (2 * W / 3, H / 2)}
+        if set(dirs) == {'left', 'right'}:
+            pos = {'left': (0, H / 4), 'right': (W / 2, H / 4)}
+        if set(dirs) == {'up', 'down'}:
+            pos = {'up': (W / 4, 0), 'down': (W / 4, H / 2)}
+        for d, key in zip(dirs, ks):
+            p = plate(k, min(k, h // 2) if len(dirs) == 4 else k)
+            if key:
+                place_label(p, text_img(text_of(key)[:3]), 0.62)
+            im.alpha_composite(p, (int(pos[d][0]), int(pos[d][1])))
+        return down(im, w, h)
+    return f
 
 
 def tex(tpf, name):
@@ -228,33 +325,6 @@ def kc(s, frac=0.62):
     return lambda w, h: key_icon(w, h, s, frac)
 
 
-FONT = [  # (box, icon maker)            PS3 meaning -> keyboard / mouse (PAD_KEYMAP=souls)
-    ((0, 0, 26, 26), kc('F')),                       # triangle -> F
-    ((26, 0, 52, 26), kc('R')),                      # square -> R
-    ((52, 0, 78, 26), lambda w, h: symbol_key(w, h, 'space')),   # circle -> Space
-    ((78, 0, 104, 26), kc('E')),                     # cross -> E
-    ((104, 0, 130, 26), lambda w, h: arrow_key(w, h, ['up', 'left', 'down', 'right'])),   # d-pad -> arrows
-    ((156, 0, 182, 26), lambda w, h: mouse_icon(w, h, 'left')),    # R1 -> left click
-    ((182, 0, 208, 26), lambda w, h: symbol_key(w, h, 'shift')),   # R2 -> Shift
-    ((208, 0, 234, 26), lambda w, h: mouse_icon(w, h, 'right')),   # L1 -> right click
-    ((234, 0, 260, 26), kc('Ctrl', 0.46)),           # L2 -> Ctrl
-    ((260, 0, 286, 26), kc('Tab', 0.46)),            # R3 -> Tab
-    ((286, 0, 312, 26), kc('C')),                    # L3 -> C
-    ((338, 0, 364, 26), lambda w, h: arrow_key(w, h, ['left', 'right'])),
-    ((364, 0, 390, 26), lambda w, h: arrow_key(w, h, ['up', 'down'])),
-    ((416, 0, 442, 26), lambda w, h: mouse_icon(w, h, None, moving=True)),   # right stick -> mouse
-    ((442, 0, 468, 26), lambda w, h: wasd_icon(w, h)),                       # left stick -> move keys
-    ((468, 0, 494, 26), lambda w, h: arrow_key(w, h, ['up'])),
-    ((0, 26, 26, 52), lambda w, h: arrow_key(w, h, ['down'])),
-    ((26, 26, 52, 52), lambda w, h: arrow_key(w, h, ['right'])),
-    ((52, 26, 78, 52), lambda w, h: arrow_key(w, h, ['left'])),
-    ((0, 52, 112, 78), kc('Backspace', 0.52)),       # wide SELECT -> Backspace
-    ((112, 52, 208, 78), kc('Enter', 0.52)),         # wide START -> Enter
-    ((130, 0, 156, 26), lambda w, h: symbol_key(w, h, 'back')),    # small SELECT
-    ((390, 0, 416, 26), lambda w, h: symbol_key(w, h, 'enter')),   # small START
-]
-
-
 def menu_plate_icon(inner):
     """Menu00 32 px: black plate like its L1/R1 cells, content inside."""
     def f(w, h):
@@ -280,49 +350,100 @@ def emboss(s):
     return f
 
 
-MENU00 = [((160, 0, 192, 32), lambda w, h: key_icon(w, h, 'R')),
-          ((192, 0, 224, 32), lambda w, h: key_icon(w, h, 'F')),
-          ((160, 32, 192, 64), lambda w, h: symbol_key(w, h, 'space')),
-          ((192, 32, 224, 64), lambda w, h: key_icon(w, h, 'E')),
-          ((256, 0, 288, 32), menu_plate_icon(lambda w, h: mouse_icon(w, h, 'right', big=True))),   # L1
-          ((256, 32, 288, 64), menu_plate_icon(lambda w, h: mouse_icon(w, h, 'left', big=True))),   # R1
-          ((288, 0, 320, 32), emboss('Ctrl')), ((320, 0, 352, 32), emboss('Ctrl')),       # L2 small / large
-          ((288, 32, 320, 64), emboss('Shift')), ((320, 32, 352, 64), emboss('Shift'))]   # R2
-MENU08 = [((79, 404, 98, 423), menu_plate_icon(lambda w, h: mouse_icon(w, h, 'right', big=True))),  # FE_key_L (L1)
-          ((102, 404, 121, 423), menu_plate_icon(lambda w, h: mouse_icon(w, h, 'left', big=True))),  # FE_key_R (R1)
-          ((79, 426, 98, 445), lambda w, h: key_icon(w, h, 'R', 0.7))]                    # FE_key_Square
+def cells():
+    """(box, icon maker) per atlas, for the current KEYS."""
+    font = [  # (box, icon maker)            PS3 button -> its key
+        ((0, 0, 26, 26), icon('two_hand')),                 # triangle
+        ((26, 0, 52, 26), icon('use_item')),                # square
+        ((52, 0, 78, 26), icon('roll')),                    # circle
+        ((78, 0, 104, 26), icon('interact')),               # cross
+        ((104, 0, 130, 26), dpad_icon(['up', 'left', 'down', 'right'])),   # d-pad
+        ((156, 0, 182, 26), icon('attack')),                # R1
+        ((182, 0, 208, 26), icon('strong_attack')),         # R2
+        ((208, 0, 234, 26), icon('block')),                 # L1
+        ((234, 0, 260, 26), icon('parry')),                 # L2
+        ((260, 0, 286, 26), icon('lock_on')),               # R3
+        ((286, 0, 312, 26), icon('l3')),                    # L3
+        ((338, 0, 364, 26), dpad_icon(['left', 'right'])),
+        ((364, 0, 390, 26), dpad_icon(['up', 'down'])),
+        ((416, 0, 442, 26), lambda w, h: mouse_icon(w, h, None, moving=True)),   # right stick -> mouse
+        ((442, 0, 468, 26), lambda w, h: wasd_icon(w, h)),                       # left stick -> move keys
+        ((468, 0, 494, 26), icon('dpad_up')),
+        ((0, 26, 26, 52), icon('dpad_down')),
+        ((26, 26, 52, 52), icon('dpad_right')),
+        ((52, 26, 78, 52), icon('dpad_left')),
+        ((0, 52, 112, 78), icon('select', wide=True)),      # wide SELECT
+        ((112, 52, 208, 78), icon('start', wide=True)),     # wide START
+        ((130, 0, 156, 26), icon('select')),                # small SELECT
+        ((390, 0, 416, 26), icon('start')),                 # small START
+    ]
+    menu00 = [((160, 0, 192, 32), icon('use_item', 'menu')),
+              ((192, 0, 224, 32), icon('two_hand', 'menu')),
+              ((160, 32, 192, 64), icon('roll', 'menu')),
+              ((192, 32, 224, 64), icon('interact', 'menu')),
+              ((256, 0, 288, 32), icon('block', 'menu')),                                 # L1
+              ((256, 32, 288, 64), icon('attack', 'menu')),                               # R1
+              ((288, 0, 320, 32), icon('parry', 'emboss')), ((320, 0, 352, 32), icon('parry', 'emboss')),   # L2
+              ((288, 32, 320, 64), icon('strong_attack', 'emboss')),
+              ((320, 32, 352, 64), icon('strong_attack', 'emboss'))]                     # R2
+    menu08 = [((79, 404, 98, 423), icon('block', 'menu')),       # FE_key_L (L1)
+              ((102, 404, 121, 423), icon('attack', 'menu')),    # FE_key_R (R1)
+              ((79, 426, 98, 445), icon('use_item', 'menu', menu_frac=0.7))]    # FE_key_Square
+    return {'DSFont24_1000': font, 'Menu00': menu00, 'Menu08': menu08}
+
+
 # (file, texture, the runtime's texture-pack KEY of it as the game draws it, first 16 hex digits of the sha1 of
 # the decoded original = the BLUS-30443 English disc's, cells). Another disc's atlas has another KEY: skipped.
-JOBS = [(r'FONT\NA_ENGLISH\dsfont24.tpf', 'DSFont24_1000', 'CE4F0427E62376F5', '41ac2ad63b6a6e53', FONT),
-        (r'MENU\menu.tpf', 'Menu00', '073A392EE5388F44', '9209bebf1b636346', MENU00),
-        (r'MENU\menu.tpf', 'Menu08', '0740A345421ED259', '0eec764f7e387a26', MENU08)]
+JOBS = [(r'FONT\NA_ENGLISH\dsfont24.tpf', 'DSFont24_1000', 'CE4F0427E62376F5', '41ac2ad63b6a6e53'),
+        (r'MENU\menu.tpf', 'Menu00', '073A392EE5388F44', '9209bebf1b636346'),
+        (r'MENU\menu.tpf', 'Menu08', '0740A345421ED259', '0eec764f7e387a26')]
 
 
-def make(usrdir, out, preview=False):
-    """-> how many atlases were written to out (<KEY>_kbm_<name>.png each), plus out\\version.txt."""
+def up_to_date(out, keys=None):
+    """The icons in out are from this VERSION and these bindings."""
+    keys = keys or read_bindings()
+    try:
+        with open(os.path.join(out, 'version.txt')) as f:
+            v = f.read().strip()
+        with open(os.path.join(out, 'keys.txt')) as f:
+            k = f.read().strip()
+    except OSError:
+        return False
+    return v == str(VERSION) and k == signature(keys)
+
+
+def make(usrdir, out, preview=False, keys=None):
+    """-> how many atlases were written to out (<KEY>_kbm_<name>.png each), plus out\\version.txt and keys.txt
+    (the bindings drawn; keys: action -> [key, key], default read_bindings())."""
     global U
     U = usrdir
+    KEYS.clear()
+    KEYS.update(keys or read_bindings())
     load_font()
+    table = cells()
     os.makedirs(out, exist_ok=True)
     prev, n = [], 0
-    for tpf, name, key, sha, cells in JOBS:
+    for tpf, name, key, sha in JOBS:
+        cl = table[name]
         orig = tex(tpf.replace('\\', os.sep), name)
         if hashlib.sha1(orig.tobytes()).hexdigest()[:16] != sha:
             print(f'  {name}: not the BLUS-30443 English one, left as it is')
             continue
         im = orig.copy()
-        for (x0, y0, x1, y1), mk in cells:
+        for (x0, y0, x1, y1), mk in cl:
             w, h = x1 - x0, y1 - y0
             im.paste(Image.new('RGBA', (w, h), (0, 0, 0, 0)), (x0, y0))
             im.alpha_composite(mk(w, h), (x0, y0))
         im.save(os.path.join(out, '%s_kbm_%s.png' % (key, name)))
         n += 1
         if preview:
-            xs = [c[0] for c in cells]
+            xs = [c[0] for c in cl]
             bx = (min(b[0] for b in xs), min(b[1] for b in xs), max(b[2] for b in xs), max(b[3] for b in xs))
             prev.append((orig.crop(bx), im.crop(bx)))
     with open(os.path.join(out, 'version.txt'), 'w') as f:
         f.write(f'{VERSION}\n')
+    with open(os.path.join(out, 'keys.txt'), 'w') as f:
+        f.write(signature(KEYS) + '\n')
     if prev:
         Z, rows = 4, []
         for a, b in prev:
@@ -338,9 +459,11 @@ def make(usrdir, out, preview=False):
 
 
 if __name__ == '__main__':
-    a = [x for x in sys.argv[1:] if x != '--preview']
+    a = [x for x in sys.argv[1:] if not x.startswith('--')]
     usr = a[0] if a else U
     out = a[1] if len(a) > 1 else os.path.join(ROOT, 'textures', 'kbm')
+    if '--if-stale' in sys.argv and up_to_date(out):
+        sys.exit(0)
     n = make(usr, out, '--preview' in sys.argv)
     print(f'  {n} keyboard / mouse button atlases in {out}')
     sys.exit(0 if n else 1)

@@ -157,6 +157,8 @@ Keyboard + mouse work alongside a controller; whichever you touch last takes ove
 - **Mouse look** follows the game's invert options. `PAD_MOUSE_LOOK_SENS=0.0012` sets the sensitivity;
   `PAD_MOUSE_LOOK=0` restores the old stick-style mouse.
 - **Keys go by position**, so AZERTY uses ZQSD. `PAD_KEYS_BY_LETTER=1` = by letter.
+- **Change any key** in the launcher: **Controls**, click a slot, press the key or mouse button (right-click clears
+  it). The button prompts and the title's *PRESS ENTER KEY* follow your keys.
 
 Saves go to `gamedata/`, and logs to `logs/`; they grow ~600 MB an hour, and the previous run is kept.
 

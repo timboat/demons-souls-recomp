@@ -5527,7 +5527,7 @@ index 0000000..d9edd4d
 +
 +#endif /* PS3RECOMP_VDEC_MF_H */
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index afdd93d..b0e00ff 100644
+index afdd93d..aeb9057 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -9,6 +9,23 @@
@@ -5554,11 +5554,12 @@ index afdd93d..b0e00ff 100644
   */
  
  #include <time.h>
-@@ -16,10 +33,13 @@
+@@ -16,10 +33,14 @@
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
 +#include <stddef.h>
++#include <ctype.h>   /* toupper: PAD_KEYS */
  #include <math.h>
  #include "../../runtime/platform/win32_compat.h"   /* GetTickCount64 on POSIX */
  #include "../../runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_write*: guest EA -> host */
@@ -5568,7 +5569,7 @@ index afdd93d..b0e00ff 100644
  
  /* PAD_CLOCK=flips: PAD_SCRIPT and PAD_STICK times count guest flips instead of
   * wall-clock seconds. A loaded machine runs a title at a third of its usual
-@@ -61,6 +81,24 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -61,6 +82,25 @@ static double pad_clock(unsigned long long t0_ms)
    #include <xinput.h>
  #endif
  
@@ -5585,6 +5586,7 @@ index afdd93d..b0e00ff 100644
 +int  ps3_host_pointer(float* x, float* y, unsigned* seq) { (void)x; (void)y; (void)seq; return 0; }
 +void ps3_host_mouse_look_frame(void) {}
 +int  ps3_host_mouse_look_take(int* dx, int* dy) { if (dx) *dx = 0; if (dy) *dy = 0; return 0; }
++int  ps3_host_start_key_text(char* out, int cap) { if (out && cap > 0) out[0] = 0; return 0; }
 +/* Buttons the title's own port code holds (DES_SKIP_INTRO, NOTES fix 96); defined in the Win32
 + * keyboard block on Windows, read by the shared poll on every host. */
 +volatile unsigned g_ps3_pad_inject;
@@ -5593,7 +5595,7 @@ index afdd93d..b0e00ff 100644
  #if PAD_BACKEND_SDL2
    #include <SDL2/SDL.h>
  #endif
-@@ -71,6 +109,11 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -71,6 +111,11 @@ static double pad_clock(unsigned long long t0_ms)
  
  #define PAD_MAX_HOST_PORTS  4  /* XInput supports max 4; SDL may support more */
  
@@ -5605,7 +5607,7 @@ index afdd93d..b0e00ff 100644
  typedef struct {
      int  connected;
      u16  buttons;           /* CELL_PAD_CTRL_* bitmask */
-@@ -100,6 +143,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
+@@ -100,6 +145,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
  /* Per-port "a report has arrived since your last read" flag; see cellPadGetData. */
  static int s_data_fresh[PAD_MAX_HOST_PORTS];
  
@@ -5677,7 +5679,7 @@ index afdd93d..b0e00ff 100644
  #if PAD_BACKEND_SDL2
  /* PS3 port i's controller, by SDL instance id (-1 = none); the port keeps the
   * GUID of the last one it had so that pad gets the same port back. */
-@@ -171,6 +279,12 @@ static u32 pad_status_take(u32 port)
+@@ -171,6 +281,12 @@ static u32 pad_status_take(u32 port)
   * PAD_RUMBLE_HOLD_MS. Large -> the host's low-frequency motor, small -> the
   * high-frequency one, which is how DualShock 4, DualSense and Xbox pads are
   * laid out too.
@@ -5690,7 +5692,7 @@ index afdd93d..b0e00ff 100644
   * -------------------------------------------------------------------------*/
  
  #define PAD_RUMBLE_HOLD_MS     1000   /* one SDL request lasts this long ... */
-@@ -179,16 +293,43 @@ static u32 pad_status_take(u32 port)
+@@ -179,16 +295,43 @@ static u32 pad_status_take(u32 port)
  typedef struct {
      u16 lo, hi;                 /* what the host motors were last asked for */
      unsigned long long sent_ms; /* when (pad_now_ms), 0 = nothing to renew */
@@ -5739,7 +5741,7 @@ index afdd93d..b0e00ff 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -258,8 +399,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -258,8 +401,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * it can be watched but not played. That is what The Simpsons Arcade Game hit:
   * it reached its attract loop and no input existed to start a game.
   *
@@ -5750,7 +5752,7 @@ index afdd93d..b0e00ff 100644
   * read only while a window of THIS process is in the foreground, so typing in
   * another application does not drive the game. Set PAD_NO_KEYBOARD=1 to
   * disable it entirely.
-@@ -268,8 +409,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -268,8 +411,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * 1/2 = L2/R2, Enter = START, Tab = SELECT. The left stick mirrors the d-pad
   * so a title that reads the stick instead is playable too. */
  #ifdef _WIN32
@@ -5763,7 +5765,7 @@ index afdd93d..b0e00ff 100644
      HWND fg = GetForegroundWindow();
      if (!fg) return 0;
      DWORD pid = 0;
-@@ -277,23 +422,594 @@ static int pad_host_window_focused(void)
+@@ -277,23 +424,703 @@ static int pad_host_window_focused(void)
      return pid == GetCurrentProcessId();
  }
  
@@ -5785,7 +5787,17 @@ index afdd93d..b0e00ff 100644
 +        {"SPACE", VK_SPACE}, {"SHIFT", VK_LSHIFT}, {"CTRL", VK_LCONTROL}, {"TAB", VK_TAB},
 +        {"ENTER", VK_RETURN}, {"BACK", VK_BACK}, {"UP", VK_UP}, {"DOWN", VK_DOWN},
 +        {"LEFT", VK_LEFT}, {"RIGHT", VK_RIGHT}, {"LMB", VK_LBUTTON}, {"RMB", VK_RBUTTON},
-+        {"MMB", VK_MBUTTON}, {"F1", VK_F1}, {"F8", VK_F8}, {"F9", VK_F9} };
++        {"MMB", VK_MBUTTON}, {"F1", VK_F1}, {"F8", VK_F8}, {"F9", VK_F9},
++        /* the rest for PAD_KEYS (fix 103) */
++        {"RSHIFT", VK_RSHIFT}, {"RCTRL", VK_RCONTROL}, {"ALT", VK_LMENU}, {"RALT", VK_RMENU}, {"CAPS", VK_CAPITAL},
++        {"INS", VK_INSERT}, {"DEL", VK_DELETE}, {"HOME", VK_HOME}, {"END", VK_END}, {"PGUP", VK_PRIOR},
++        {"PGDN", VK_NEXT}, {"MB4", VK_XBUTTON1}, {"MB5", VK_XBUTTON2}, {"F2", VK_F2}, {"F3", VK_F3}, {"F4", VK_F4},
++        {"F5", VK_F5}, {"F6", VK_F6}, {"F7", VK_F7}, {"F10", VK_F10}, {"NUM0", VK_NUMPAD0}, {"NUM1", VK_NUMPAD1},
++        {"NUM2", VK_NUMPAD2}, {"NUM3", VK_NUMPAD3}, {"NUM4", VK_NUMPAD4}, {"NUM5", VK_NUMPAD5}, {"NUM6", VK_NUMPAD6},
++        {"NUM7", VK_NUMPAD7}, {"NUM8", VK_NUMPAD8}, {"NUM9", VK_NUMPAD9}, {"MINUS", VK_OEM_MINUS},
++        {"EQUALS", VK_OEM_PLUS}, {"LBRACKET", VK_OEM_4}, {"RBRACKET", VK_OEM_6}, {"BACKSLASH", VK_OEM_5},
++        {"SEMICOLON", VK_OEM_1}, {"QUOTE", VK_OEM_7}, {"COMMA", VK_OEM_COMMA}, {"PERIOD", VK_OEM_PERIOD},
++        {"SLASH", VK_OEM_2}, {"GRAVE", VK_OEM_3} };
 +    if (n == 1 && ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= '0' && s[0] <= '9'))) return s[0];
 +    if (n == 1 && s[0] >= 'a' && s[0] <= 'z') return s[0] - 32;
 +    for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++)
@@ -5856,7 +5868,7 @@ index afdd93d..b0e00ff 100644
 +                vk_of[i] = v ? (int)v : 'A' + i;
 +            }
 +        }
-+    }
+     }
 +    return vk_of[us_letter - 'A'];
 +}
 +/* Keys for the game layouts (fix 73 review): a key or mouse button that is already down when the
@@ -5874,6 +5886,113 @@ index afdd93d..b0e00ff 100644
 +    if (!down) { s_key_stale[vk] = 0; return 0; }
 +    if (s_key_gate) s_key_stale[vk] = 1;
 +    return !s_key_stale[vk];
++}
+ 
++/* Key bindings of the souls layout (Demon's Souls NOTES fix 103). The defaults are the layout below;
++ * PAD_KEYS="<action>=<key>[+<key>];..." (the launcher's Controls window writes it) replaces an action's keys,
++ * "<action>=" unbinds it. Keys: a letter or digit (by position like the defaults, fix 69, unless
++ * PAD_KEYS_BY_LETTER), or a pad_vk_from_name name (SPACE, SHIFT, LMB, MB4, NUM5, ...). Up to two keys an action.
++ * The menu mouse (fix 89 / 93: left click confirm, right click back, the wheel) stays on the mouse buttons
++ * whatever attack / block are bound to. */
++enum { KB_MOVE_F, KB_MOVE_B, KB_MOVE_L, KB_MOVE_R, KB_CAM_U, KB_CAM_D, KB_CAM_L, KB_CAM_R, KB_BUTTONS };
++static struct { const char* name; u16 btn; int vk[2]; } s_kb[] = {
++    {"move_forward", 0, {'W', 0}}, {"move_back", 0, {'S', 0}}, {"move_left", 0, {'A', 0}},
++    {"move_right", 0, {'D', 0}}, {"camera_up", 0, {'I', 0}}, {"camera_down", 0, {'K', 0}},
++    {"camera_left", 0, {'J', 0}}, {"camera_right", 0, {'L', 0}},
++    {"attack", CELL_PAD_CTRL_R1, {VK_LBUTTON, 0}}, {"strong_attack", CELL_PAD_CTRL_R2, {VK_LSHIFT, 0}},
++    {"block", CELL_PAD_CTRL_L1, {VK_RBUTTON, 0}}, {"parry", CELL_PAD_CTRL_L2, {VK_LCONTROL, 0}},
++    {"roll", CELL_PAD_CTRL_CIRCLE, {VK_SPACE, 0}}, {"interact", CELL_PAD_CTRL_CROSS, {'E', 0}},
++    {"two_hand", CELL_PAD_CTRL_TRIANGLE, {'F', 0}}, {"use_item", CELL_PAD_CTRL_SQUARE, {'R', 0}},
++    {"lock_on", CELL_PAD_CTRL_R3, {VK_TAB, VK_MBUTTON}}, {"l3", CELL_PAD_CTRL_L3, {'C', 0}},
++    {"dpad_up", CELL_PAD_CTRL_UP, {VK_UP, 0}}, {"dpad_down", CELL_PAD_CTRL_DOWN, {VK_DOWN, 0}},
++    {"dpad_left", CELL_PAD_CTRL_LEFT, {VK_LEFT, 0}}, {"dpad_right", CELL_PAD_CTRL_RIGHT, {VK_RIGHT, 0}},
++    {"start", CELL_PAD_CTRL_START, {VK_RETURN, 0}}, {"select", CELL_PAD_CTRL_SELECT, {VK_BACK, 0}},
++};
++#define KB_N ((int)(sizeof s_kb / sizeof s_kb[0]))
++static void pad_kb_init(void)
++{
++    static int done;
++    if (done) return;
++    done = 1;
++    const char* e = getenv("PAD_KEYS");
++    int changed = 0;
++    while (e && *e) {
++        const char* end = strchr(e, ';');
++        const size_t len = end ? (size_t)(end - e) : strlen(e);
++        const char* eq = (const char*)memchr(e, '=', len);
++        if (eq) {
++            const size_t nlen = (size_t)(eq - e);
++            for (int i = 0; i < KB_N; i++) {
++                if (strlen(s_kb[i].name) != nlen || _strnicmp(s_kb[i].name, e, nlen)) continue;
++                int vk[2] = { 0, 0 }, k = 0;
++                const char* v = eq + 1;
++                const char* vend = e + len;
++                while (v < vend && k < 2) {
++                    const char* plus = (const char*)memchr(v, '+', (size_t)(vend - v));
++                    const size_t kl = plus ? (size_t)(plus - v) : (size_t)(vend - v);
++                    char nm[16];
++                    if (kl && kl < sizeof nm) {
++                        for (size_t c = 0; c < kl; c++) nm[c] = (char)toupper((unsigned char)v[c]);
++                        const int code = pad_vk_from_name(nm, kl);
++                        if (code) vk[k++] = code;
++                        else fprintf(stderr, "[cellPad] PAD_KEYS: unknown key '%.*s' for %s\n", (int)kl, v, s_kb[i].name);
++                    }
++                    if (!plus) break;
++                    v = plus + 1;
++                }
++                s_kb[i].vk[0] = vk[0]; s_kb[i].vk[1] = vk[1];
++                changed++;
++            }
++        }
++        if (!end) break;
++        e = end + 1;
++    }
++    if (changed) { printf("[cellPad] key bindings: %d action(s) from PAD_KEYS\n", changed); fflush(stdout); }
++}
++static int pad_kb_down(int i)
++{
++    return (s_kb[i].vk[0] && pad_game_down(s_kb[i].vk[0])) || (s_kb[i].vk[1] && pad_game_down(s_kb[i].vk[1]));
++}
++/* The title's "PRESS ... KEY" (lifted-code 011, NOTES fix 92 / 103): what the start action's first key is called,
++ * a letter as it is printed on this keyboard (by position: W on QWERTY is Z on AZERTY). -> 1 a key (out "ENTER",
++ * "Q", "NUM 5", ...), 2 a mouse button (out "LEFT CLICK", "MOUSE 4", ...), 0 unbound or nameless. */
++int ps3_host_start_key_text(char* out, int cap)
++{
++    static const struct { int vk; const char* t; int mouse; } names[] = {
++        {VK_RETURN, "ENTER", 0}, {VK_SPACE, "SPACE", 0}, {VK_LSHIFT, "SHIFT", 0}, {VK_RSHIFT, "RIGHT SHIFT", 0},
++        {VK_LCONTROL, "CTRL", 0}, {VK_RCONTROL, "RIGHT CTRL", 0}, {VK_LMENU, "ALT", 0}, {VK_RMENU, "RIGHT ALT", 0},
++        {VK_TAB, "TAB", 0}, {VK_BACK, "BACKSPACE", 0}, {VK_CAPITAL, "CAPS LOCK", 0}, {VK_UP, "UP", 0},
++        {VK_DOWN, "DOWN", 0}, {VK_LEFT, "LEFT", 0}, {VK_RIGHT, "RIGHT", 0}, {VK_INSERT, "INSERT", 0},
++        {VK_DELETE, "DELETE", 0}, {VK_HOME, "HOME", 0}, {VK_END, "END", 0}, {VK_PRIOR, "PAGE UP", 0},
++        {VK_NEXT, "PAGE DOWN", 0}, {VK_F2, "F2", 0}, {VK_F3, "F3", 0}, {VK_F4, "F4", 0}, {VK_F5, "F5", 0},
++        {VK_F6, "F6", 0}, {VK_F7, "F7", 0}, {VK_F10, "F10", 0},
++        {VK_LBUTTON, "LEFT CLICK", 1}, {VK_RBUTTON, "RIGHT CLICK", 1}, {VK_MBUTTON, "MIDDLE CLICK", 1},
++        {VK_XBUTTON1, "MOUSE 4", 1}, {VK_XBUTTON2, "MOUSE 5", 1} };
++    if (!out || cap < 2) return 0;
++    out[0] = 0;
++    pad_kb_init();
++    int vk = 0;
++    for (int i = KB_BUTTONS; i < KB_N; i++)
++        if (!strcmp(s_kb[i].name, "start")) vk = s_kb[i].vk[0] ? s_kb[i].vk[0] : s_kb[i].vk[1];
++    if (!vk) return 0;
++    for (unsigned i = 0; i < sizeof names / sizeof names[0]; i++)
++        if (names[i].vk == vk) { snprintf(out, (size_t)cap, "%s", names[i].t); return names[i].mouse ? 2 : 1; }
++    if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) { snprintf(out, (size_t)cap, "NUM %d", vk - VK_NUMPAD0); return 1; }
++    int c = 0;
++    if (vk >= 'A' && vk <= 'Z') { const int v = pad_pos_key(vk); c = (v >= 'A' && v <= 'Z') ? v : vk; }
++    else if (vk >= '0' && vk <= '9') c = vk;
++    else { c = (int)(MapVirtualKeyA((UINT)vk, MAPVK_VK_TO_CHAR) & 0x7FFF); if (c < 33 || c > 126) c = 0; }
++    if (!c) return 0;
++    out[0] = (char)(c >= 'a' && c <= 'z' ? c - 32 : c);
++    out[1] = 0;
++    return 1;
++}
++static u16 pad_kb_bits_of(int vk)   /* the pad buttons a key / mouse button is bound to */
++{
++    u16 b = 0;
++    for (int i = KB_BUTTONS; i < KB_N; i++)
++        if (s_kb[i].vk[0] == vk || s_kb[i].vk[1] == vk) b |= s_kb[i].btn;
++    return b;
 +}
 +
 +/* Port hotkeys (Demon's Souls god mode, NOTES fix 44): ps3_host_hotkey(vk) is 1 once per press of
@@ -5929,6 +6048,7 @@ index afdd93d..b0e00ff 100644
 + *   F = TRIANGLE (two-hand)   R = SQUARE (use item)   TAB or MMB = R3 (lock on)   C = L3
 + *   arrows = d-pad (switch items / spells)   ENTER = START   BACK = SELECT
 + *   F1 = capture / release the mouse (captured while the window has focus; PAD_MOUSE=0 = never).
++ * Those are the defaults: PAD_KEYS rebinds them (s_kb, fix 103).
 + * PAD_MOUSE_SENS=<f> (default 6): stick deflection per pixel of mouse movement per poll. */
 +/* (file scope is still inside _WIN32 here on Windows; these counters are re-declared
 + * unconditionally further up, before PAD_MAX_HOST_PORTS ends the shared region) */
@@ -6094,17 +6214,7 @@ index afdd93d..b0e00ff 100644
 +static int pad_stick_moved(u8 v);
 +static void pad_poll_keyboard_souls(PadHostState* hs, int mouse_ok)
 +{
-+    static const struct { int vk; u16 btn; } map[] = {
-+        { VK_LBUTTON, CELL_PAD_CTRL_R1 },  { VK_LSHIFT, CELL_PAD_CTRL_R2 },
-+        { VK_RBUTTON, CELL_PAD_CTRL_L1 },  { VK_LCONTROL, CELL_PAD_CTRL_L2 },
-+        { VK_SPACE, CELL_PAD_CTRL_CIRCLE }, { 'E', CELL_PAD_CTRL_CROSS },
-+        { 'F', CELL_PAD_CTRL_TRIANGLE },    { 'R', CELL_PAD_CTRL_SQUARE },
-+        { VK_TAB, CELL_PAD_CTRL_R3 },       { VK_MBUTTON, CELL_PAD_CTRL_R3 },
-+        { 'C', CELL_PAD_CTRL_L3 },
-+        { VK_UP, CELL_PAD_CTRL_UP },        { VK_DOWN, CELL_PAD_CTRL_DOWN },
-+        { VK_LEFT, CELL_PAD_CTRL_LEFT },    { VK_RIGHT, CELL_PAD_CTRL_RIGHT },
-+        { VK_RETURN, CELL_PAD_CTRL_START }, { VK_BACK, CELL_PAD_CTRL_SELECT },
-+    };
++    pad_kb_init();   /* the button keys: s_kb (fix 103) */
 +    /* Menus (fix 89). A mouse button held when a menu opens stays dead in the menu (a held block does not become
 +     * "back"); one pressed in the menu and still held when it closes stays dead in the game until released (the
 +     * click that closes a menu does not then attack). One held right through a short prompt (block held while
@@ -6161,13 +6271,13 @@ index afdd93d..b0e00ff 100644
 +    }
 +    for (unsigned i = 0; i < sizeof mb / sizeof mb[0]; i++) mb_was[i] = (unsigned char)pad_key_down(mb[i]);
 +    u16 btns = 0;
-+    for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
-+        if (pad_game_down(map[i].vk)) btns |= map[i].btn;
++    for (int i = KB_BUTTONS; i < KB_N; i++)
++        if (pad_kb_down(i)) btns |= s_kb[i].btn;
 +    int menu_click = 0;   /* a confirm / back press edge: cancels queued wheel notches */
 +    if (!menu) lr_was = 0;
 +    if (menu) {
-+        const int lmb = (btns & CELL_PAD_CTRL_R1) != 0, rmb = (btns & CELL_PAD_CTRL_L1) != 0;
-+        btns &= (u16)~(CELL_PAD_CTRL_R1 | CELL_PAD_CTRL_L1);
++        const int lmb = pad_game_down(VK_LBUTTON), rmb = pad_game_down(VK_RBUTTON);   /* whatever they are bound to */
++        btns &= (u16)~(pad_kb_bits_of(VK_LBUTTON) | pad_kb_bits_of(VK_RBUTTON));
 +        int cross = lmb;
 +        if (pad_point_on() && !s_mouse_cap && s_ptr_inside) {
 +            /* Pointing (local): in a pointing-aware menu a left click confirms only on an item. On the selected item it
@@ -6289,22 +6399,23 @@ index afdd93d..b0e00ff 100644
 +        if (!inside) InterlockedExchange(&s_ptr_auth, 0);   /* in a black bar / outside the window */
 +        const u16 dirs = CELL_PAD_CTRL_UP | CELL_PAD_CTRL_DOWN | CELL_PAD_CTRL_LEFT | CELL_PAD_CTRL_RIGHT;
 +        const PadHostState* ps = &s_host_state[0];   /* the pad's own state (merged with the keys after this poll) */
-+        if ((btns & dirs) || pad_game_down('W') || pad_game_down('A') || pad_game_down('S') || pad_game_down('D') ||
++        if ((btns & dirs) || pad_kb_down(KB_MOVE_F) || pad_kb_down(KB_MOVE_L) || pad_kb_down(KB_MOVE_B) ||
++            pad_kb_down(KB_MOVE_R) ||
 +            (ps->connected && ((ps->buttons & dirs) || pad_stick_moved(ps->analog_lx) || pad_stick_moved(ps->analog_ly) ||
 +                               pad_stick_moved(ps->analog_rx) || pad_stick_moved(ps->analog_ry))))
 +            InterlockedExchange(&s_ptr_auth, 0);   /* keys, WASD, the pad (or the wheel's d-pad pulses) take over */
 +    }
 +
-+    /* Left stick from WASD; a diagonal is scaled so it is not faster than a straight line. */
-+    int lx = (pad_game_down('D') ? 1 : 0) - (pad_game_down('A') ? 1 : 0);
-+    int ly = (pad_game_down('S') ? 1 : 0) - (pad_game_down('W') ? 1 : 0);
++    /* Left stick from the move keys (WASD); a diagonal is scaled so it is not faster than a straight line. */
++    int lx = (pad_kb_down(KB_MOVE_R) ? 1 : 0) - (pad_kb_down(KB_MOVE_L) ? 1 : 0);
++    int ly = (pad_kb_down(KB_MOVE_B) ? 1 : 0) - (pad_kb_down(KB_MOVE_F) ? 1 : 0);
 +    const int lmag = (lx && ly) ? 90 : 127;
 +    hs->analog_lx = (u8)(128 + lx * lmag);
 +    hs->analog_ly = (u8)(128 + ly * lmag);
 +
-+    /* Right stick from IJKL, plus the mouse while it is captured. */
-+    double rx = (pad_game_down('L') ? 127 : 0) - (pad_game_down('J') ? 127 : 0);
-+    double ry = (pad_game_down('K') ? 127 : 0) - (pad_game_down('I') ? 127 : 0);
++    /* Right stick from the camera keys (IJKL), plus the mouse while it is captured. */
++    double rx = (pad_kb_down(KB_CAM_R) ? 127 : 0) - (pad_kb_down(KB_CAM_L) ? 127 : 0);
++    double ry = (pad_kb_down(KB_CAM_D) ? 127 : 0) - (pad_kb_down(KB_CAM_U) ? 127 : 0);
 +    static int mouse_on = -1, f1_was = 0, lmb_was = 1;
 +    if (mouse_on < 0) { const char* e = getenv("PAD_MOUSE"); mouse_on = (e && e[0] == '0') ? 0 : 1;
 +                        printf("[cellPad] keyboard layout: souls (WASD move, click to capture the mouse, F1 releases it)\n");
@@ -6324,7 +6435,7 @@ index afdd93d..b0e00ff 100644
 +        ScreenToClient(fg, &p) && p.x >= 0 && p.y >= 0 && p.x < rc.right && p.y < rc.bottom) {
 +        pad_mouse_capture(1);
 +        s_key_stale[VK_LBUTTON] = 1;
-+        btns &= ~CELL_PAD_CTRL_R1; hs->buttons = btns;   /* the map loop above already saw it this poll */
++        btns &= (u16)~pad_kb_bits_of(VK_LBUTTON); hs->buttons = btns;   /* the map loop above already saw it */
 +        s_mouse_claim = 1;
 +    }
 +    lmb_was = lmb;
@@ -6356,7 +6467,7 @@ index afdd93d..b0e00ff 100644
 +            }
 +            SetCursorPos(c.x, c.y);
 +        }
-     }
++    }
 +    cap_prev = s_mouse_cap != 0;
 +    if (rx > 127) rx = 127; if (rx < -127) rx = -127;
 +    if (ry > 127) ry = 127; if (ry < -127) ry = -127;
@@ -6365,13 +6476,13 @@ index afdd93d..b0e00ff 100644
 +    hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
 +    hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
 +}
- 
++
 +static void pad_poll_keyboard_basic(PadHostState* hs)
 +{
      static const struct { int vk; u16 btn; } map[] = {
          { VK_UP,     CELL_PAD_CTRL_UP },      { VK_DOWN,  CELL_PAD_CTRL_DOWN },
          { VK_LEFT,   CELL_PAD_CTRL_LEFT },    { VK_RIGHT, CELL_PAD_CTRL_RIGHT },
-@@ -306,7 +1022,7 @@ static void pad_poll_keyboard(void)
+@@ -306,7 +1133,7 @@ static void pad_poll_keyboard(void)
  
      u16 btns = 0;
      for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
@@ -6380,7 +6491,7 @@ index afdd93d..b0e00ff 100644
  
      hs->buttons   = btns;
      hs->connected = 1;
-@@ -317,10 +1033,100 @@ static void pad_poll_keyboard(void)
+@@ -317,10 +1144,100 @@ static void pad_poll_keyboard(void)
      hs->analog_rx = hs->analog_ry = 128;
      hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
      hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
@@ -6483,7 +6594,7 @@ index afdd93d..b0e00ff 100644
            fflush(stdout); } }
  }
  #endif
-@@ -443,12 +1249,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+@@ -443,12 +1360,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
      return (u8)val;
  }
  
@@ -6519,7 +6630,7 @@ index afdd93d..b0e00ff 100644
      const int on = r->lo || r->hi;
      SDL_GameControllerRumble(gc, r->lo, r->hi, on ? PAD_RUMBLE_HOLD_MS : 0);
      r->sent_ms = on ? pad_now_ms() : 0;
-@@ -562,9 +1390,14 @@ static void pad_sdl_hotplug(int force)
+@@ -562,9 +1501,14 @@ static void pad_sdl_hotplug(int force)
  
  static void pad_poll_sdl2(void)
  {
@@ -6534,7 +6645,7 @@ index afdd93d..b0e00ff 100644
      for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
          SDL_GameController* gc = s_sdl_controllers[i];
          if (!gc) {
-@@ -575,43 +1408,59 @@ static void pad_poll_sdl2(void)
+@@ -575,43 +1519,59 @@ static void pad_poll_sdl2(void)
  
          s_host_state[i].connected = 1;
  
@@ -6623,7 +6734,7 @@ index afdd93d..b0e00ff 100644
  
          /* Pressure: SDL has digital buttons, so 0 or 255 */
          s_host_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
-@@ -629,6 +1478,7 @@ static void pad_poll_sdl2(void)
+@@ -629,6 +1589,7 @@ static void pad_poll_sdl2(void)
  
  static void pad_init_backend(void)
  {
@@ -6631,7 +6742,7 @@ index afdd93d..b0e00ff 100644
      if (!s_sdl_inited) {
          if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0) {
              /* The game is not always the focused app: on macOS its window
-@@ -643,6 +1493,17 @@ static void pad_init_backend(void)
+@@ -643,6 +1604,17 @@ static void pad_init_backend(void)
               * cared. SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the
               * environment still wins over this. */
              SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -6649,7 +6760,7 @@ index afdd93d..b0e00ff 100644
              SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
          }
          s_sdl_inited = 1;
-@@ -650,6 +1511,11 @@ static void pad_init_backend(void)
+@@ -650,6 +1622,11 @@ static void pad_init_backend(void)
      memset(s_sdl_controllers, 0, sizeof(s_sdl_controllers));
      for (int p = 0; p < PAD_MAX_HOST_PORTS; p++) s_sdl_ids[p] = -1;
  
@@ -6661,7 +6772,7 @@ index afdd93d..b0e00ff 100644
      /* Open any controllers already connected */
      pad_sdl_hotplug(1);
  }
-@@ -684,7 +1550,13 @@ static void pad_shutdown_backend(void)
+@@ -684,7 +1661,13 @@ static void pad_shutdown_backend(void)
  static unsigned long long pad_now_ms(void)
  {
  #ifdef _WIN32
@@ -6676,7 +6787,7 @@ index afdd93d..b0e00ff 100644
  #else
      struct timespec ts;
      clock_gettime(CLOCK_MONOTONIC, &ts);
-@@ -693,6 +1565,240 @@ static unsigned long long pad_now_ms(void)
+@@ -693,6 +1676,240 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -6917,7 +7028,7 @@ index afdd93d..b0e00ff 100644
  static void pad_poll_backend(void)
  {
      static unsigned long long s_last_ms = 0;
-@@ -706,17 +1812,63 @@ static void pad_poll_backend(void)
+@@ -706,17 +1923,63 @@ static void pad_poll_backend(void)
      for (int _i = 0; _i < PAD_MAX_HOST_PORTS; _i++) s_data_fresh[_i] = 1;
  
  #if PAD_BACKEND_XINPUT
@@ -6983,7 +7094,7 @@ index afdd93d..b0e00ff 100644
  /* ---------------------------------------------------------------------------
   * API implementations
   * -----------------------------------------------------------------------*/
-@@ -735,6 +1887,7 @@ s32 cellPadInit(u32 max_connect)
+@@ -735,6 +1998,7 @@ s32 cellPadInit(u32 max_connect)
      if (max_connect == 0 || max_connect > 127)
          return CELL_PAD_ERROR_INVALID_PARAMETER;
  
@@ -6991,7 +7102,7 @@ index afdd93d..b0e00ff 100644
      s_pad_initialized = 1;
      s_max_connect = max_connect > CELL_PAD_MAX_PORT_NUM ? CELL_PAD_MAX_PORT_NUM : max_connect;
      memset(s_port_setting, 0, sizeof(s_port_setting));
-@@ -865,6 +2018,7 @@ skip_inject: ;
+@@ -865,6 +2129,7 @@ skip_inject: ;
          len = CELL_PAD_LEN_CHANGE_PRESS_ON;
  
      data->len = len;
@@ -6999,7 +7110,7 @@ index afdd93d..b0e00ff 100644
      /* Finalize this call's packet freshness before any injected hold budget
       * advances. len=0 drain reads still build the ordinary payload, but do
       * not consume a PAD_FILE report. See the emission contract below. */
-@@ -875,6 +2029,17 @@ skip_inject: ;
+@@ -875,6 +2140,17 @@ skip_inject: ;
              if (!s_data_fresh[port_no]) data->len = 0;   /* nothing new: end the drain */
              else                        s_data_fresh[port_no] = 0;
          }
@@ -7017,7 +7128,7 @@ index afdd93d..b0e00ff 100644
      }
      /* button[0] is reserved and 0 on hardware; button[1] carries the pad mode
       * in its high nibble (0x7) and len/2 in its low one. GH3 drops any packet
-@@ -947,13 +2112,28 @@ skip_inject: ;
+@@ -947,13 +2223,28 @@ skip_inject: ;
                    held[i]--;
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(ev[i].mask & 0xFF);
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((ev[i].mask >> 8) & 0xFF);
@@ -7048,7 +7159,7 @@ index afdd93d..b0e00ff 100644
      /* PAD_FILE=<path> -- closed-loop input. Each poll, if the file holds a
       * button mask (same encoding as PAD_SCRIPT), press it for a fixed number
       * of positive guest reports and empty the file on admission. A driver
-@@ -967,6 +2147,7 @@ skip_inject: ;
+@@ -967,6 +2258,7 @@ skip_inject: ;
       *   echo 0x0040 4 > pad.txt  # DOWN for 4 reports (menus auto-repeat a
       *                            # long hold; the default is 40)
       */
@@ -7056,7 +7167,7 @@ index afdd93d..b0e00ff 100644
      { static int s_pf = -1; static char pf_path[512];
        static unsigned held_mask = 0; static int held_n = 0;
        if (s_pf < 0) { const char* e = getenv("PAD_FILE");
-@@ -978,11 +2159,25 @@ skip_inject: ;
+@@ -978,11 +2270,25 @@ skip_inject: ;
                if (f) {
                    char buf[64]; buf[0] = 0;
                    if (fgets(buf, sizeof buf, f)) {
@@ -7087,7 +7198,7 @@ index afdd93d..b0e00ff 100644
                    }
                    fclose(f);
                    if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
-@@ -1015,6 +2210,30 @@ skip_inject: ;
+@@ -1015,6 +2321,30 @@ skip_inject: ;
        if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
                    hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
                    hs->connected = 1; }
@@ -7118,7 +7229,7 @@ index afdd93d..b0e00ff 100644
        /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
         * deflections instead of holding one. Guessing a single stick position and
         * re-running costs ~5 minutes a try; a sweep answers "can input move the
-@@ -1042,8 +2261,16 @@ skip_inject: ;
+@@ -1042,8 +2372,16 @@ skip_inject: ;
                  fprintf(stderr, "[PADSWEEP] step %d: l=(%u,%u) r=(%u,%u)%c", k,
                          steps[k][0], steps[k][1], steps[k][2], steps[k][3], 10); } }
          } } }
@@ -7137,7 +7248,7 @@ index afdd93d..b0e00ff 100644
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X]  = hs->analog_lx;
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y]  = hs->analog_ly;
  
-@@ -1122,6 +2349,21 @@ emit:
+@@ -1122,6 +2460,21 @@ emit:
       * PAD_ALWAYS_CHANGE=1 restores the old always-a-packet behaviour. */
      {
          unsigned int ea = (unsigned int)(uintptr_t)data_guest;
@@ -7159,7 +7270,7 @@ index afdd93d..b0e00ff 100644
          vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
          for (int _i = 0; _i < CELL_PAD_MAX_CODES; _i++)                    /* button[] u16 */
              vm_write16((unsigned long long)ea + 4 + (unsigned int)_i * 2, data->button[_i]);
-@@ -1395,18 +2637,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1395,18 +2748,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  
      param = GUEST_PTR(param, CellPadActParam*);
  
@@ -7191,7 +7302,7 @@ index afdd93d..b0e00ff 100644
          XINPUT_VIBRATION vib;
          vib.wLeftMotorSpeed  = (WORD)lo;
          vib.wRightMotorSpeed = (WORD)hi;
-@@ -1419,7 +2669,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1419,7 +2780,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
      pad_sdl_rumble_send((int)port_no);
      pad_unlock();
  #endif

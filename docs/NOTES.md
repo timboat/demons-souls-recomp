@@ -2287,6 +2287,34 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       0.9 a minute. q = 1 (every rate that locked before) runs the same code as before.
     - The 120 Hz report (locked) still has 11.6% frames a refresh late: those present 3-7 ms after the tick
       instead of 0-2 ms, i.e. the render side ran late, in a window (compositor); not addressed here.
+103. **Key rebinding in the launcher; "PRESS ENTER KEY" on the title (2026-11-07, GitHub issue 33 "it would be great to
+    have the option to customize the controls"; asked for: "you should include the remapping in the launcher" and
+    "can it say PRESS ENTER KEY instead of PRESS ENTER BUTTON or press q key"; the user tried it: "hell yeah that
+    worked"):**
+    - cellPad.c: the souls layout's keys are a table, s_kb (24 actions: 4 move, 4 camera, the 16 buttons; up to two
+      keys each; the defaults are the old layout). PAD_KEYS="<action>=<KEY>[+<KEY>];..." replaces an action's keys,
+      "<action>=" unbinds it. Key names = pad_vk_from_name, which now also knows RSHIFT RCTRL ALT RALT CAPS INS DEL
+      HOME END PGUP PGDN MB4 MB5 F2-F7 F10 NUM0-9 and the punctuation keys. Letters stay by position (fix 69). The
+      menu mouse (fix 89 / 93) reads the mouse buttons themselves (it read "the R1 / L1 bits from LMB / RMB"), and
+      clears whatever they are bound to; the capturing click clears the left button's binding.
+    - The title's keyboard text (fix 92): ps3_host_start_key_text gives the start action's first key as printed on
+      the keyboard (by position), and the hook writes "PRESS <key> KEY" ("PRESS ENTER KEY", "PRESS Q KEY"; a mouse
+      button or a name too long for the 18 units without " KEY": "PRESS LEFT CLICK", "PRESS BACKSPACE") over the 19
+      units of "PRESS START BUTTON" (a shorter text ends earlier; the font centres it), and the original back for
+      the pad -- only while the units read the original or the last text written.
+    - The launcher: the Controls button opens a window with every action and two key slots: click a slot, press a
+      key or mouse button (polled with GetAsyncKeyState, so mouse buttons and Space work; Esc cancels; F1 F8 F9 F11
+      F12 refused), right-click clears, a key moves off another action, Reset to defaults. Kept in launcher.ini
+      [controls]; PAD_KEYS gets the actions that differ from the defaults. A just-bound mouse button / Space is not
+      also a click on a slot (500 ms), and focus leaves the buttons while one listens.
+    - tools/kbm_icons.py: the icons follow the bindings (launcher.ini [controls]): one icon maker per bound key (mouse,
+      symbol keys, arrows, letters, labelled plates; a d-pad on other keys = labelled plates), keys.txt records what
+      was drawn, --if-stale draws only when the bindings or VERSION (now 2) changed; the launcher runs it before Play
+      (0.1 s when nothing changed), BUILD.bat after a build (setup/build.py: up_to_date).
+    - Checked: default bindings = the old icons pixel for pixel (all 3 atlases); a custom set drawn right (Q, Mouse 4,
+      Alt, number keys on the d-pad); in game (sandbox, scripted keys): start=Q -> a Q press opens the title menu,
+      without the binding it does not; the title reads "PRESS ENTER KEY" / "PRESS Q KEY", centred; the user's test of
+      the launcher window and the game.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

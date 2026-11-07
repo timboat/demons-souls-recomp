@@ -257,8 +257,8 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
---- a/recompiled/ppu_recomp_011.cpp	2026-11-05 21:34:49.704370600 -0700
-+++ b/recompiled/ppu_recomp_011.cpp	2026-11-05 21:34:49.719386200 -0700
+--- a/recompiled/ppu_recomp_011.cpp	2026-11-07 10:00:00.000000000 -0700
++++ b/recompiled/ppu_recomp_011.cpp	2026-11-07 10:00:00.000000000 -0700
 @@ -242,12 +242,14 @@
  
  /* Drain pending trampolines after any call that might set g_trampoline_fn.
@@ -274,7 +274,7 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -38897,8 +38899,414 @@
+@@ -38897,8 +38899,432 @@
          return;
  }
  
@@ -286,6 +286,7 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
 +extern "C" void ps3_host_menu_state(unsigned mask);   /* cellPad.c, fix 89 */
 +extern "C" void des_pt_step(unsigned mask);   /* 086, menu pointing: swap the item table each step */
 +extern "C" int texpack_kbm_want(void);   /* rsx_tex_pack.c: keyboard / mouse button icons shown (fix 91) */
++extern "C" int ps3_host_start_key_text(char* out, int cap);   /* cellPad.c: the start key's name (fix 103) */
 +extern "C" unsigned long long ps3_thread_cpu_us(void);   /* rsx_live_draw.c */
 +extern "C" void ps3_perf_step_begin(void);               /* rsx_live_draw.c (DES_PERF_STACKS) */
 +#ifdef _WIN32
@@ -402,9 +403,11 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
 +     * ("menu other") id 30000, which the title's T00_text shape looks up once and then hands to the font renderer
 +     * on every draw straight from the message manager's heap copy (MSG MAN = *0x01B485D8, FMG of category c at
 +     * +4+c*4; groups {first index, first id, last id} at fmg+0x1C, count at +0xC, string-offset table pointer at
-+     * +0x14, made absolute by the loader). So the 5 letters of START are rewritten in place as ENTER while the
-+     * keyboard / mouse icons are shown (texpack_kbm_want: same choice, same LD_TEX_KBM) and back for the pad --
-+     * only when all 18 units still read one of the two (another language or a reload is left alone). */
++     * +0x14, made absolute by the loader). So it is rewritten in place as "PRESS <start key> KEY" (fix 103:
++     * "PRESS ENTER KEY", "PRESS Q KEY" from the key bindings; a mouse button or a name too long for the 18 units
++     * without " KEY"; a shorter text ends earlier) while the keyboard / mouse icons are shown (texpack_kbm_want:
++     * same choice, same LD_TEX_KBM) and back for the pad -- only while all 19 units (with the terminator) still
++     * read the original or what was written last (another language or a reload is left alone). */
 +    { static uint32_t ps_mm, ps_fmg, ps_str, ps_retry; static int ps_shown = -1;
 +      const uint32_t mm = vm_read32(0x01B485D8);
 +      const uint32_t fmg = mm ? vm_read32(mm + 4 + 77 * 4) : 0;
@@ -431,19 +434,34 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
 +      if (ps_str) {
 +          const int want = texpack_kbm_want() ? 1 : 0;
 +          if (want != ps_shown) {
-+              static const char head[] = "PRESS ", tail[] = " BUTTON", words[2][6] = { "START", "ENTER" };
-+              int ok = vm_read16(ps_str + 36) == 0, cur = -1;
-+              for (int k = 0; ok && k < 6; k++) ok = vm_read16(ps_str + 2 * k) == (uint16_t)head[k];
-+              for (int k = 0; ok && k < 7; k++) ok = vm_read16(ps_str + 22 + 2 * k) == (uint16_t)tail[k];
-+              for (int w = 0; ok && w < 2 && cur < 0; w++) {
-+                  int m = 1;
-+                  for (int k = 0; m && k < 5; k++) m = vm_read16(ps_str + 12 + 2 * k) == (uint16_t)words[w][k];
-+                  if (m) cur = w;
++              static const char orig[] = "PRESS START BUTTON";   /* 18 units + the terminator */
++              static char kbm[19];
++              static int have_kbm = -1;
++              static uint16_t last[19];
++              static int last_ok;
++              if (have_kbm < 0) {
++                  char name[24];
++                  const int r = ps3_host_start_key_text(name, (int)sizeof name);
++                  const size_t n = strlen(name);
++                  have_kbm = 0;
++                  if (r == 1 && n && 6 + n + 4 <= 18) { snprintf(kbm, sizeof kbm, "PRESS %s KEY", name); have_kbm = 1; }
++                  else if (r && n && 6 + n <= 18) { snprintf(kbm, sizeof kbm, "PRESS %s", name); have_kbm = 1; }
 +              }
-+              if (cur < 0) ps_str = 0;   /* not the English title text: leave it (looked for again later) */
++              int is_orig = 1, is_last = last_ok;
++              for (int k = 0; k < 19; k++) {
++                  const uint16_t u = vm_read16(ps_str + 2 * k);
++                  is_orig = is_orig && u == (uint16_t)(unsigned char)orig[k];
++                  is_last = is_last && u == last[k];
++              }
++              if (!is_orig && !is_last) ps_str = 0;   /* not the English title text: leave it (looked for again later) */
 +              else {
-+                  if (cur != want)
-+                      for (int k = 0; k < 5; k++) vm_write16(ps_str + 12 + 2 * k, (uint16_t)words[want][k]);
++                  const char* t = (want && have_kbm) ? kbm : orig;
++                  const size_t n = strlen(t);
++                  for (int k = 0; k < 19; k++) {
++                      last[k] = (uint16_t)((size_t)k < n ? (unsigned char)t[k] : 0);
++                      vm_write16(ps_str + 2 * k, last[k]);
++                  }
++                  last_ok = 1;
 +                  ps_shown = want;
 +              }
 +          }

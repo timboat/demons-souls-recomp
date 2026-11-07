@@ -68,6 +68,59 @@ struct Settings {
 };
 static Settings g_set;
 
+// Key bindings (NOTES fix 103): launcher.ini [controls] <action>=<KEY>[+<KEY>] (no line = the default, empty =
+// unbound). The game gets the ones that differ from the defaults as PAD_KEYS (libs/input/cellPad.c s_kb: the same
+// action names, defaults and key names); tools\kbm_icons.py draws the button icons from them before Play.
+struct Action { const wchar_t* name; const wchar_t* label; const wchar_t* def; };
+static const Action ACTIONS[] = {
+    {L"move_forward", L"Move forward", L"W"}, {L"move_back", L"Move back", L"S"},
+    {L"move_left", L"Move left", L"A"}, {L"move_right", L"Move right", L"D"},
+    {L"camera_up", L"Camera up", L"I"}, {L"camera_down", L"Camera down", L"K"},
+    {L"camera_left", L"Camera left", L"J"}, {L"camera_right", L"Camera right", L"L"},
+    {L"attack", L"Attack (R1)", L"LMB"}, {L"strong_attack", L"Strong attack (R2)", L"SHIFT"},
+    {L"block", L"Block (L1)", L"RMB"}, {L"parry", L"Parry (L2)", L"CTRL"},
+    {L"roll", L"Roll / back (Circle)", L"SPACE"}, {L"interact", L"Interact (Cross)", L"E"},
+    {L"two_hand", L"Two-hand (Triangle)", L"F"}, {L"use_item", L"Use item (Square)", L"R"},
+    {L"lock_on", L"Lock on (R3)", L"TAB+MMB"}, {L"l3", L"L3", L"C"},
+    {L"dpad_up", L"D-pad up", L"UP"}, {L"dpad_down", L"D-pad down", L"DOWN"},
+    {L"dpad_left", L"D-pad left", L"LEFT"}, {L"dpad_right", L"D-pad right", L"RIGHT"},
+    {L"start", L"Start (menu)", L"ENTER"}, {L"select", L"Select", L"BACK"},
+};
+enum { N_ACTIONS = (int)(sizeof ACTIONS / sizeof *ACTIONS) };
+static wstring g_keys[N_ACTIONS][2];   // key names; "" = none
+
+static void split_keys(const wstring& v, wstring out[2]) {
+    out[0].clear(); out[1].clear();
+    size_t plus = v.find(L'+');
+    out[0] = v.substr(0, plus);
+    if (plus != wstring::npos) out[1] = v.substr(plus + 1);
+    if (out[0].empty()) { out[0] = out[1]; out[1].clear(); }
+}
+static wstring join_keys(const wstring k[2]) {
+    if (k[0].empty()) return k[1];
+    return k[1].empty() ? k[0] : k[0] + L"+" + k[1];
+}
+static void load_keys() {
+    for (int a = 0; a < N_ACTIONS; ++a) {
+        wchar_t buf[64];
+        GetPrivateProfileStringW(L"controls", ACTIONS[a].name, L"\x7f", buf, 64, g_ini.c_str());
+        split_keys(wcscmp(buf, L"\x7f") ? wstring(buf) : wstring(ACTIONS[a].def), g_keys[a]);
+    }
+}
+static void save_keys() {
+    for (int a = 0; a < N_ACTIONS; ++a)
+        WritePrivateProfileStringW(L"controls", ACTIONS[a].name, join_keys(g_keys[a]).c_str(), g_ini.c_str());
+}
+static wstring pad_keys_env() {   // the actions that differ from the defaults
+    wstring e;
+    for (int a = 0; a < N_ACTIONS; ++a) {
+        wstring v = join_keys(g_keys[a]);
+        if (v != ACTIONS[a].def) e += wstring(ACTIONS[a].name) + L"=" + v + L";";
+    }
+    if (!e.empty()) e.pop_back();
+    return e;
+}
+
 static int ini_int(const wchar_t* k, int def) { return (int)GetPrivateProfileIntW(L"launcher", k, def, g_ini.c_str()); }
 static void ini_put(const wchar_t* k, const wstring& v) { WritePrivateProfileStringW(L"launcher", k, v.c_str(), g_ini.c_str()); }
 static void ini_put(const wchar_t* k, int v) { ini_put(k, std::to_wstring(v)); }
@@ -91,6 +144,7 @@ static void load_settings() {
     wchar_t buf[2048];
     GetPrivateProfileStringW(L"launcher", L"extra", L"", buf, 2048, g_ini.c_str());
     s.extra = buf;
+    load_keys();
 }
 
 static void save_settings() {
@@ -110,6 +164,7 @@ static void save_settings() {
     ini_put(L"no_rebuild", s.no_rebuild);
     ini_put(L"skip_intro", s.skip_intro);
     ini_put(L"extra", s.extra);
+    save_keys();
 }
 
 static bool game_present(int g) { return exists(g_root + L"\\" + GAME_DIRS[g] + L"\\PS3_GAME\\USRDIR\\EBOOT.elf"); }
@@ -192,6 +247,8 @@ static wstring game_env(const Settings& s) {
     envif(L"DES_RECORD", !s.record, L"0");
     envif(L"LD_TEX_DUMP", s.dump, L"1");
     envif(L"PAD_KEYS_BY_LETTER", s.by_letter, L"1");
+    wstring keys = pad_keys_env();
+    env(L"PAD_KEYS", keys.empty() ? nullptr : keys.c_str());
     envif(L"DES_AFFINITY", !s.pin, L"0");
     envif(L"DES_NO_REBUILD", s.no_rebuild, L"1");
     envif(L"DES_SKIP_INTRO", s.skip_intro, L"1");
@@ -291,6 +348,15 @@ static bool can_play(HWND w, const Settings& s) {
 }
 
 static HANDLE start_game(const Settings& s) {
+    // The keyboard / mouse button icons follow the bindings (fix 103): kbm_icons.py --if-stale draws them again when
+    // they or its art changed (a few seconds), else returns at once. No Python environment: the icons stay as they are.
+    wstring py = at(L".venv\\Scripts\\python.exe"), tool = at(L"tools\\kbm_icons.py");
+    if (exists(py) && exists(tool) && exists(at(L"game\\PS3_GAME\\USRDIR"))) {
+        if (HANDLE h = run_cmd(q(py) + L" " + q(tool) + L" --if-stale", false)) {
+            WaitForSingleObject(h, 60000);
+            CloseHandle(h);
+        }
+    }
     wstring env = game_env(s);
     return run_cmd(q(at(L"PLAY.bat")), false, &env);
 }
@@ -785,30 +851,226 @@ static void on_update() {
     SetWindowTextW(item(ID_STATUS), L"Checking for updates...");
 }
 
+// ---- the Controls window (fix 103) -----------------------------------------------------------------------
+struct KeyDef { const wchar_t* name; int vk; const wchar_t* label; };
+static const KeyDef KEYDEFS[] = {
+    {L"LMB", VK_LBUTTON, L"Left mouse"}, {L"RMB", VK_RBUTTON, L"Right mouse"}, {L"MMB", VK_MBUTTON, L"Middle mouse"},
+    {L"MB4", VK_XBUTTON1, L"Mouse 4"}, {L"MB5", VK_XBUTTON2, L"Mouse 5"}, {L"SPACE", VK_SPACE, L"Space"},
+    {L"SHIFT", VK_LSHIFT, L"Shift"}, {L"RSHIFT", VK_RSHIFT, L"Right Shift"}, {L"CTRL", VK_LCONTROL, L"Ctrl"},
+    {L"RCTRL", VK_RCONTROL, L"Right Ctrl"}, {L"ALT", VK_LMENU, L"Alt"}, {L"RALT", VK_RMENU, L"Right Alt"},
+    {L"TAB", VK_TAB, L"Tab"}, {L"ENTER", VK_RETURN, L"Enter"}, {L"BACK", VK_BACK, L"Backspace"},
+    {L"CAPS", VK_CAPITAL, L"Caps Lock"}, {L"UP", VK_UP, L"Up"}, {L"DOWN", VK_DOWN, L"Down"}, {L"LEFT", VK_LEFT, L"Left"},
+    {L"RIGHT", VK_RIGHT, L"Right"}, {L"INS", VK_INSERT, L"Insert"}, {L"DEL", VK_DELETE, L"Delete"},
+    {L"HOME", VK_HOME, L"Home"}, {L"END", VK_END, L"End"}, {L"PGUP", VK_PRIOR, L"Page Up"},
+    {L"PGDN", VK_NEXT, L"Page Down"}, {L"F2", VK_F2, L"F2"}, {L"F3", VK_F3, L"F3"}, {L"F4", VK_F4, L"F4"},
+    {L"F5", VK_F5, L"F5"}, {L"F6", VK_F6, L"F6"}, {L"F7", VK_F7, L"F7"}, {L"F10", VK_F10, L"F10"},
+    {L"NUM0", VK_NUMPAD0, L"Num 0"}, {L"NUM1", VK_NUMPAD1, L"Num 1"}, {L"NUM2", VK_NUMPAD2, L"Num 2"},
+    {L"NUM3", VK_NUMPAD3, L"Num 3"}, {L"NUM4", VK_NUMPAD4, L"Num 4"}, {L"NUM5", VK_NUMPAD5, L"Num 5"},
+    {L"NUM6", VK_NUMPAD6, L"Num 6"}, {L"NUM7", VK_NUMPAD7, L"Num 7"}, {L"NUM8", VK_NUMPAD8, L"Num 8"},
+    {L"NUM9", VK_NUMPAD9, L"Num 9"}, {L"MINUS", VK_OEM_MINUS, nullptr}, {L"EQUALS", VK_OEM_PLUS, nullptr},
+    {L"LBRACKET", VK_OEM_4, nullptr}, {L"RBRACKET", VK_OEM_6, nullptr}, {L"BACKSLASH", VK_OEM_5, nullptr},
+    {L"SEMICOLON", VK_OEM_1, nullptr}, {L"QUOTE", VK_OEM_7, nullptr}, {L"COMMA", VK_OEM_COMMA, nullptr},
+    {L"PERIOD", VK_OEM_PERIOD, nullptr}, {L"SLASH", VK_OEM_2, nullptr}, {L"GRAVE", VK_OEM_3, nullptr},
+};
+// A..Z: the US QWERTY scan code of each letter. Letters are stored by position, as the game reads them (fix 69):
+// the key pressed here is turned into the US letter in that place, and shown as this keyboard's letter there.
+static const unsigned char US_SC[26] = {0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32,
+                                         0x31, 0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C};
+static HKL key_layout() { return GetKeyboardLayout(0); }
+static wstring key_name_of_vk(int vk) {   // "" = not a key the game takes
+    if (vk >= '0' && vk <= '9') return wstring(1, (wchar_t)vk);
+    if (vk >= 'A' && vk <= 'Z') {
+        if (g_set.by_letter) return wstring(1, (wchar_t)vk);
+        UINT sc = MapVirtualKeyExW((UINT)vk, MAPVK_VK_TO_VSC, key_layout());
+        for (int i = 0; i < 26; ++i)
+            if (US_SC[i] == sc) return wstring(1, (wchar_t)(L'A' + i));
+        return wstring(1, (wchar_t)vk);
+    }
+    for (auto& k : KEYDEFS)
+        if (k.vk == vk) return k.name;
+    return L"";
+}
+static wstring key_label(const wstring& name) {   // what a button shows
+    if (name.empty()) return L"-";
+    if (name.size() == 1 && name[0] >= L'A' && name[0] <= L'Z' && !g_set.by_letter) {
+        UINT vk = MapVirtualKeyExW(US_SC[name[0] - L'A'], MAPVK_VSC_TO_VK, key_layout());
+        if (vk >= 'A' && vk <= 'Z') return wstring(1, (wchar_t)vk);
+    }
+    if (name.size() == 1) return name;
+    for (auto& k : KEYDEFS)
+        if (name == k.name) {
+            if (k.label) return k.label;
+            wchar_t c = (wchar_t)(MapVirtualKeyExW((UINT)k.vk, MAPVK_VK_TO_CHAR, key_layout()) & 0x7FFF);
+            return c > L' ' ? wstring(1, c) : wstring(k.name);
+        }
+    return name;
+}
+
+enum { ID_K_FIRST = 300, ID_K_RESET = 400, ID_K_DONE, ID_K_STATUS, ID_K_HELP };
+static HWND g_kw;                 // the Controls window
+static int g_listen = -1;         // slot (action * 2 + 0/1) waiting for a key
+static bool g_listen_armed;       // everything was released since the click that started it
+static bool g_keys_changed;
+static ULONGLONG g_key_set_at;    // a key was just set: the click / right-click that set it is not a command too
+
+static void keys_refresh() {
+    for (int a = 0; a < N_ACTIONS; ++a)
+        for (int k = 0; k < 2; ++k) {
+            int slot = a * 2 + k;
+            SetWindowTextW(GetDlgItem(g_kw, ID_K_FIRST + slot), slot == g_listen ? L"press a key..." : key_label(g_keys[a][k]).c_str());
+        }
+}
+static void keys_status(const wstring& t) { SetWindowTextW(GetDlgItem(g_kw, ID_K_STATUS), t.c_str()); }
+
+static bool key_down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+static void keys_poll() {   // the timer while a slot listens: the first key or mouse button pressed
+    if (g_listen < 0 || GetForegroundWindow() != g_kw) return;
+    std::vector<int> vks = {VK_ESCAPE, VK_F1, VK_F8, VK_F9, VK_F11, VK_F12, VK_LWIN, VK_RWIN};
+    for (int c = '0'; c <= '9'; ++c) vks.push_back(c);
+    for (int c = 'A'; c <= 'Z'; ++c) vks.push_back(c);
+    for (auto& k : KEYDEFS) vks.push_back(k.vk);
+    int hit = 0;
+    for (int vk : vks)
+        if (key_down(vk)) { hit = vk; break; }
+    if (!g_listen_armed) { if (!hit) g_listen_armed = true; return; }   // the click (or a key) that started it
+    if (!hit) return;
+    const int slot = g_listen, a = slot / 2, k = slot % 2;
+    g_listen = -1;
+    KillTimer(g_kw, 1);
+    g_key_set_at = GetTickCount64();
+    if (hit == VK_ESCAPE) { keys_status(L"Cancelled."); keys_refresh(); return; }
+    if (hit == VK_F1 || hit == VK_F8 || hit == VK_F9 || hit == VK_F11 || hit == VK_F12 || hit == VK_LWIN || hit == VK_RWIN) {
+        keys_status(L"That key is taken (F1 frees the mouse, F8 marks a stutter, F9 god mode, F11 fullscreen, "
+                    L"F12 a capture). Pick another one.");
+        keys_refresh();
+        return;
+    }
+    wstring name = key_name_of_vk(hit);
+    if (name.empty()) { keys_refresh(); return; }
+    wstring moved;
+    for (int b = 0; b < N_ACTIONS; ++b)
+        for (int j = 0; j < 2; ++j)
+            if ((b != a || j != k) && g_keys[b][j] == name) {
+                g_keys[b][j].clear();
+                if (j == 0) { g_keys[b][0] = g_keys[b][1]; g_keys[b][1].clear(); }
+                moved = ACTIONS[b].label;
+            }
+    g_keys[a][k] = name;
+    if (k == 1 && g_keys[a][0].empty()) { g_keys[a][0] = name; g_keys[a][1].clear(); }
+    g_keys_changed = true;
+    keys_status(moved.empty() ? key_label(name) + L" is now " + ACTIONS[a].label + L"."
+                              : key_label(name) + L" is now " + ACTIONS[a].label + L" (taken off " + moved + L").");
+    keys_refresh();
+}
+
+static LRESULT CALLBACK keys_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
+    switch (m) {
+    case WM_COMMAND: {
+        int id = LOWORD(wp);
+        if (GetTickCount64() - g_key_set_at < 500) return 0;   // the mouse button / Space that was just bound
+        if (id >= ID_K_FIRST && id < ID_K_FIRST + 2 * N_ACTIONS) {
+            g_listen = id - ID_K_FIRST;
+            SetFocus(w);   // keys go to the window, not to a button (Space would click it again)
+            g_listen_armed = false;
+            keys_status(L"Press the key or mouse button for " + wstring(ACTIONS[g_listen / 2].label) + L" (Esc cancels).");
+            keys_refresh();
+            SetTimer(w, 1, 15, nullptr);
+        } else if (id == ID_K_RESET) {
+            for (int a = 0; a < N_ACTIONS; ++a) split_keys(ACTIONS[a].def, g_keys[a]);
+            g_listen = -1;
+            g_keys_changed = true;
+            keys_status(L"Back to the default keys.");
+            keys_refresh();
+        } else if (id == ID_K_DONE) DestroyWindow(w);
+        return 0;
+    }
+    case WM_CONTEXTMENU: {   // right-click a slot: clear it
+        int id = GetDlgCtrlID((HWND)wp);
+        if (GetTickCount64() - g_key_set_at < 500) return 0;   // the right button was just bound
+        if (g_listen < 0 && id >= ID_K_FIRST && id < ID_K_FIRST + 2 * N_ACTIONS) {
+            int a = (id - ID_K_FIRST) / 2, k = (id - ID_K_FIRST) % 2;
+            g_keys[a][k].clear();
+            if (k == 0) { g_keys[a][0] = g_keys[a][1]; g_keys[a][1].clear(); }
+            g_keys_changed = true;
+            keys_status(wstring(ACTIONS[a].label) + (g_keys[a][0].empty() ? L" has no key now." : L": one key less."));
+            keys_refresh();
+        }
+        return 0;
+    }
+    case WM_TIMER: keys_poll(); return 0;
+    case WM_CTLCOLORSTATIC: {
+        HDC dc = (HDC)wp;
+        SetBkMode(dc, TRANSPARENT);
+        int id = GetDlgCtrlID((HWND)lp);
+        SetTextColor(dc, GetSysColor(id == ID_K_HELP || id == ID_K_STATUS ? COLOR_GRAYTEXT : COLOR_WINDOWTEXT));
+        return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+    }
+    case WM_CLOSE: DestroyWindow(w); return 0;
+    case WM_DESTROY:
+        KillTimer(w, 1);
+        g_listen = -1;
+        if (g_keys_changed) save_keys();
+        g_kw = nullptr;
+        EnableWindow(g_wnd, TRUE);
+        SetForegroundWindow(g_wnd);
+        return 0;
+    }
+    return DefWindowProcW(w, m, wp, lp);
+}
+
 static void on_controls() {
-    MessageBoxW(g_wnd,
-        L"Xbox controller: A = Cross, B = Circle, X = Square, Y = Triangle, LB/RB = L1/R1, LT/RT = L2/R2, "
-        L"Back = Select. A DualShock / DualSense needs Steam Input or DS4Windows.\n\n"
-        L"Keyboard + mouse (work beside a controller too):\n"
-        L"  WASD\tmove\n"
-        L"  mouse / IJKL\tcamera\n"
-        L"  left mouse\tattack (R1)\n"
-        L"  Shift\tstrong attack (R2)\n"
-        L"  right mouse\tblock (L1)\n"
-        L"  Ctrl\tparry (L2)\n"
-        L"  Space\troll / dash / back (Circle)\n"
-        L"  E\tinteract / confirm (Cross)\n"
-        L"  F\ttwo-hand (Triangle)\n"
-        L"  R\tuse item (Square)\n"
-        L"  Tab / middle mouse\tlock on (R3)\n"
-        L"  arrows\td-pad (switch items)\n"
-        L"  Enter / Backspace\tStart / Select\n\n"
-        L"  F1\tcapture / release the mouse\n"
-        L"  Alt+Enter / F11\tfullscreen on / off\n"
-        L"  F8\tmark a stutter in the recording\n"
-        L"  F9\tgod mode on / off\n\n"
-        L"Keys go by position (ZQSD on AZERTY) unless \"Keys by letter\" is ticked.",
-        L"Controls", MB_ICONINFORMATION);
+    if (g_kw) { SetForegroundWindow(g_kw); return; }
+    read_controls();   // "Keys by letter" decides how letters are stored and shown
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{sizeof wc};
+        wc.lpfnWndProc = keys_proc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        wc.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
+        wc.lpszClassName = L"DemonsSoulsControls";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    const int ROWS = (N_ACTIONS + 1) / 2, CW = 320, TOP = 100, RH = 27;
+    const int cw = 2 * CW + 16, ch = TOP + ROWS * RH + 90;
+    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+    RECT r{0, 0, S(cw), S(ch)};
+    AdjustWindowRect(&r, style, FALSE);
+    RECT pr;
+    GetWindowRect(g_wnd, &pr);
+    g_kw = CreateWindowExW(0, L"DemonsSoulsControls", L"Controls - keyboard and mouse", style,
+                           pr.left + 20, pr.top + 20, r.right - r.left, r.bottom - r.top, g_wnd, nullptr,
+                           GetModuleHandleW(nullptr), nullptr);
+    if (!g_kw) return;
+    g_keys_changed = false;
+    auto make = [&](const wchar_t* cls, const wchar_t* text, DWORD st, int id, int x, int y, int w, int h) {
+        HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | st, S(x), S(y), S(w), S(h), g_kw,
+                                 (HMENU)(INT_PTR)id, GetModuleHandleW(nullptr), nullptr);
+        SendMessageW(c, WM_SETFONT, (WPARAM)g_font, FALSE);
+        return c;
+    };
+    make(L"STATIC", L"Click a slot, then press the key or mouse button for it. Right-click a slot to clear it. "
+         L"Two keys per action; a key goes to one action only. Fixed keys: F1 frees the mouse, F8 marks a stutter, "
+         L"F9 god mode, F11 / Alt+Enter fullscreen. In menus the left / right mouse buttons always confirm / go back. "
+         L"An Xbox controller always works too (DualShock / DualSense: Steam Input or DS4Windows).",
+         SS_LEFT, ID_K_HELP, 12, 8, cw - 24, TOP - 14);
+    for (int a = 0; a < N_ACTIONS; ++a) {
+        int col = a / ROWS, row = a % ROWS;
+        int x = 12 + col * (CW + 8), y = TOP + row * RH;
+        make(L"STATIC", ACTIONS[a].label, SS_LEFT, -1, x, y + 4, 120, 20);
+        for (int k = 0; k < 2; ++k)
+            make(WC_BUTTONW, L"", BS_PUSHBUTTON, ID_K_FIRST + a * 2 + k, x + 124 + k * 92, y, 88, 24);
+    }
+    int y = TOP + ROWS * RH + 8;
+    make(L"STATIC", L"", SS_LEFT, ID_K_STATUS, 12, y, cw - 24, 36);
+    y += 42;
+    make(WC_BUTTONW, L"Reset to defaults", BS_PUSHBUTTON, ID_K_RESET, 12, y, 140, 28);
+    make(WC_BUTTONW, L"Done", BS_DEFPUSHBUTTON, ID_K_DONE, cw - 12 - 100, y, 100, 28);
+    keys_refresh();
+    keys_status(L"The button prompts in the game follow these keys.");
+    EnableWindow(g_wnd, FALSE);
+    ShowWindow(g_kw, SW_SHOW);
 }
 
 static void on_folders() {
@@ -933,7 +1195,8 @@ static void create_controls() {
         L"(BUILD.bat). No git needed: a copy from a release ZIP gets the newest release.");
     add(WC_BUTTONW, L"Report a problem", BS_PUSHBUTTON | WS_TABSTOP, ID_REPORT, L + (bw + 8), y, bw, 28,
         L"Packs your last session (recording, F8 marks, log, PC specs) into a zip and opens a GitHub issue (REPORT.bat).");
-    add(WC_BUTTONW, L"Controls", BS_PUSHBUTTON | WS_TABSTOP, ID_CONTROLS, L + 2 * (bw + 8), y, bw, 28);
+    add(WC_BUTTONW, L"Controls", BS_PUSHBUTTON | WS_TABSTOP, ID_CONTROLS, L + 2 * (bw + 8), y, bw, 28,
+        L"Change the keyboard and mouse keys. The game's button prompts follow them.");
     add(WC_BUTTONW, L"Folders \u25b4", BS_PUSHBUTTON | WS_TABSTOP, ID_FOLDERS, L + 3 * (bw + 8), y, bw, 28,
         L"Saves, logs, recordings, texture and model folders.");
     y += 36;
