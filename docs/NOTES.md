@@ -2235,6 +2235,23 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       gone: BUILD.bat downloaded Python 3.13.17 into deps\python, remade `.venv`, installed the requirements and
       ran setup\build.py; also in a folder named "Demon's Souls test". SETUP.bat with DS_TEST_NO_PYTHON=1: same
       download, "Creating the Python environment", setup.py ran.
+99. **Updates no longer send you to SETUP.bat, and a game left running is found (2026-11-06, zackcage6's videos:
+    "could not update in place ... Run SETUP.bat", then "perf.txt - The process cannot access the file because it
+    is being used by another process" and a launch that never starts):**
+    - An update whose lifted-code.patch cannot be re-applied in place (a Code-ZIP copy has no git history to find
+      the old patch in, or an update stopped halfway) made BUILD.bat stop with "Run SETUP.bat". setup/build.py
+      `sync_patches()` now does that SETUP step itself: the game code recompiled from the extracted EBOOT.elf
+      (`setup.step_lift()`, steps 4 + 5) or ps3recomp set up again (`step_ps3recomp()`). SETUP.bat is only asked
+      for when there is no extracted game.
+    - The old build with the new files stayed on a black screen and kept running without a window, so the next
+      Play could not start (its recording file was taken). PLAY.bat now looks for a running DemonsSoulsRecomp.exe
+      before it starts and asks whether to close it: a Y/N question, or a Yes/No message box when the launcher
+      runs PLAY.bat without a window. It waits for the old one to be gone before clearing its cache. `findstr`,
+      not `find`: with Git's usr\bin early on PATH, `find` is the Unix one and the check never matched.
+    - Checked: the scratch release setup (relsetup) with its saved patch made unmatchable and its git history
+      hidden: `sync_patches()` recompiled in 1 min 39 s and recorded the current patch. The running-game block
+      (copied with a fake process name, so no real game could be closed): nothing running -> starts; running + N
+      -> stops; running + Y -> the process ends, starts. The message box command parses and maps Yes/No right.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

@@ -181,6 +181,28 @@ choice /c YN /m "Play the build you already have anyway"
 if errorlevel 2 exit /b 1
 goto play
 :play
+rem A game from an earlier Play can still be running (stuck on a black screen, or its window gone): a second one
+rem cannot start next to it (its recording and save files are taken), so nothing seemed to happen. Ask whether to
+rem close it -- in a message box when the launcher runs this without a window.
+tasklist /FI "IMAGENAME eq DemonsSoulsRecomp.exe" /NH 2>nul | findstr /i /c:"DemonsSoulsRecomp.exe" >nul || goto not_running
+if defined DES_LAUNCHER goto running_box
+echo.
+echo Demon's Souls is still running from an earlier start (maybe stuck on a black screen), and a second
+echo copy cannot start next to it.
+choice /c YN /m "Close the running one and start again"
+if errorlevel 2 exit /b 1
+goto close_running
+:running_box
+powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $m = 'Demon''s Souls is still running from an earlier start (maybe stuck on a black screen), and a second copy cannot start next to it.' + [char]10 + [char]10 + 'Close the running one and start again?'; exit [int]([System.Windows.Forms.MessageBox]::Show($m, 'Demon''s Souls', 'YesNo', 'Warning') -eq 'Yes')"
+if not errorlevel 1 exit /b 1
+:close_running
+taskkill /F /IM DemonsSoulsRecomp.exe >nul 2>&1
+rem wait until it is gone (up to ~10 s) before its cache and logs are touched
+for /l %%i in (1,1,10) do (
+  tasklist /FI "IMAGENAME eq DemonsSoulsRecomp.exe" /NH 2>nul | findstr /i /c:"DemonsSoulsRecomp.exe" >nul || goto not_running
+  ping -n 2 127.0.0.1 >nul
+)
+:not_running
 rem (again: a rebuild may have switched between the AVX2 and the plain build)
 set "PS3_REQUIRE_AVX2="
 if not exist "%D%\port\build_opt\no_avx2.txt" set "PS3_REQUIRE_AVX2=1"

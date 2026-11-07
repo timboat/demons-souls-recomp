@@ -775,12 +775,27 @@ def kbm_icons():
 
 def sync_patches():
     """An update of this repo since SETUP.bat: re-apply the patches that changed (setup/patch_sync.py).
-    Returns False when that needs SETUP.bat."""
+    When one cannot be re-applied in place (a copy without git history, or an update that stopped
+    halfway), redo that SETUP.bat step here: ps3recomp set up again (step 3), or the game code
+    recompiled from the extracted EBOOT.elf (steps 4 + 5, a few minutes). Returns False only when that
+    needs SETUP.bat itself (no extracted game)."""
     import patch_sync
-    from setup import PS3RECOMP_COMMIT, lift_inputs
-    if patch_sync.sync_runtime(PS3RECOMP_COMMIT) == 'redo' or patch_sync.sync_lifted(lift_inputs()) == 'relift':
-        say(f'  Run {os.environ.get("DS_SETUP_NAME") or "SETUP.bat"} to bring this setup up to date (it keeps the game files).')
-        return False
+    import setup as S
+    if patch_sync.sync_runtime(S.PS3RECOMP_COMMIT) == 'redo':
+        say('  setting up ps3recomp again (what SETUP.bat step 3 does) ...')
+        mark = os.path.join(S.PS3RECOMP, '.ds_patched')
+        if os.path.isfile(mark):
+            os.remove(mark)
+        S.step_ps3recomp()
+    if patch_sync.sync_lifted(S.lift_inputs()) == 'relift':
+        if S.find_eboot_elf() is None:
+            say(f'  Run {os.environ.get("DS_SETUP_NAME") or "SETUP.bat"} to bring this setup up to date (it keeps the game files).')
+            return False
+        say('  recompiling the game code from your EBOOT.elf (what SETUP.bat steps 4 + 5 do) ...')
+        mark = os.path.join(S.PORT, '.lifted')
+        if os.path.isfile(mark):
+            os.remove(mark)
+        S.step_lift()
     return True
 
 
