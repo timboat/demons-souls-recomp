@@ -2252,6 +2252,24 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       hidden: `sync_patches()` recompiled in 1 min 39 s and recorded the current patch. The running-game block
       (copied with a fake process name, so no real game could be closed): nothing running -> starts; running + N
       -> stops; running + Y -> the process ends, starts. The message box command parses and maps Yes/No right.
+101. **Crash in Penetrator's fight: guest setjmp/longjmp (2026-11-07; the user's report: a slash, a
+    death and soul pickup):**
+    - Mid-fight (a slash, a death and soul pickup, ~1 min in) the game died reading NULL in luaV_execute
+      (func_00CCBDD8, r26 = L gone). A log in the lifted longjmp showed one jump just before: from luaD_throw
+      (func_00CAE730, lr 0x00CAE768) to a protected call's jmp_buf (setjmp at 0x00CAF1E8). Penetrator's scripts
+      raise a Lua error there and the PS3 catches it; the lifted longjmp (func_01674A5C) only loaded r1, r2,
+      r13-r31, LR, CR, f14-f31 and returned to its own caller, which carried on with the setjmp frame's registers.
+    - The game has 14 setjmp call sites (func_01674938) and ~2,070 longjmp calls: Lua's error handling and
+      "try" wrappers on a TLS flag (r13-28104) and TLS jmp_buf (r13-28648) that the allocator longjmps to.
+    - Fix (project/ds_guest_setjmp.cpp + lifted-code.patch): each setjmp site arms a host jmp_buf for that guest
+      buffer (ds_sj_arm) and host-setjmps on it in the lifted function's own frame; the lifted longjmp, after
+      loading the guest registers, calls ds_sj_jump, which host-longjmps there (Win64: Frame = 0, no SEH unwind;
+      only lifted frames lie between). Per thread, a stack of armed buffers in call order; arming drops entries
+      whose functions returned (deeper host or guest frame, or the same host frame at another guest r1 -- without
+      that last rule the stack overflowed 64 entries); the dispatcher's depth / vcall counters are restored on a
+      jump. No match = the old fall-through, logged. DES_SETJMP_LOG=1 logs each jump.
+    - Checked: the unattended repro (warp into the arena, god mode) crashed ~1 min in before; the user's hand
+      test with the fix, ~7 min in the fight with no crash, logged 3 caught Lua errors (stack 4-5 entries).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
