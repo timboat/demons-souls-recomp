@@ -18072,7 +18072,7 @@ index 35052c6..56e782d 100644
  #define VMX_FUN(name, expr, flush_in, nanmode) \
  VMX_INL void name(VMX_D, VMX_B, uint32_t vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16]; \
 diff --git a/runtime/ppu/tests/boot_main.cpp b/runtime/ppu/tests/boot_main.cpp
-index a55afb0..e041889 100644
+index a55afb0..876be33 100644
 --- a/runtime/ppu/tests/boot_main.cpp
 +++ b/runtime/ppu/tests/boot_main.cpp
 @@ -51,6 +51,49 @@ uint32_t ps3_hle_count(void);   /* handlers actually registered, for the milesto
@@ -18259,7 +18259,7 @@ index a55afb0..e041889 100644
              cellGcmTickVBlank();
              cellGcmTickFlip();
              /* Present a pending flip BEFORE draining further: the flip fires
-@@ -503,18 +584,33 @@ static DWORD WINAPI vblank_ticker(LPVOID)
+@@ -503,18 +584,47 @@ static DWORD WINAPI vblank_ticker(LPVOID)
               * right now is exactly the completed frame. Presenting on a raw
               * flip-count change after the drain raced the guest's next-frame
               * writes and showed empty or mixed batches. */
@@ -18288,19 +18288,33 @@ index a55afb0..e041889 100644
 +                              const char* f = getenv("LD_VBLANK_LOCK_PHASE"); phase = f ? atof(f) : 0.0; }
 +              unsigned long long vb; double dp;
 +              if (lock && rsx_live_draw_display_vblank(&vb, &dp)) {
-+                  const double n = dp / vb_period_us, ni = floor(n + 0.5);
-+                  if (ni >= 1 && ni <= 8 && fabs(n - ni) < 0.015 * ni) {
-+                      const double pg = dp / ni, g0 = (double)vb + phase * pg;
-+                      next_tick = g0 + floor((next_tick - g0) / pg + 0.5) * pg;
++                  /* p ticks every q refreshes, q <= 4 (Demon's Souls fix 102): 120 Hz ticks (60 fps) on a
++                   * 180 Hz monitor are 2 per 3 refreshes, on 240 Hz 1 per 2. Only whole multiples (q = 1)
++                   * locked before, and a 180 Hz display showed 60 fps as 3 / 4 / 2-refresh frames as the
++                   * clocks drifted. The fit's base is just a recent vblank, one refresh further on
++                   * each time, so the grid snapped to is the one every such base shares: steps of
++                   * dp / p (p, q have no common factor: q is the smallest that fits). A tick is q of
++                   * those steps after the last, and every p-th tick lands on a vblank. Snapping to
++                   * dp * q / p from a moving base put ticks on a different lattice each refresh:
++                   * 68.7 instead of 66.7 Hz ticks in a test. */
++                  const double n = dp / vb_period_us;   /* ticks per refresh */
++                  double p = 0, q = 0;
++                  for (int qi = 1; qi <= 4 && !q; qi++) {
++                      const double pi = floor(n * qi + 0.5);
++                      if (pi >= 1 && pi <= 8 * qi && fabs(n * qi - pi) < 0.015 * pi) { p = pi; q = qi; }
++                  }
++                  if (q) {
++                      const double pg = dp * q / p, step = dp / p, g0 = (double)vb + phase * pg;
++                      next_tick = g0 + floor((next_tick - g0) / step + 0.5) * step;
 +                      if (said != 1) { said = 1; fprintf(stderr, "[vblank-lock] guest ticks locked to the display: "
-+                          "%.0f per refresh, display %.4f Hz -> %.4f Hz ticks\n", ni, 1e6 / dp, 1e6 / pg); }
++                          "%.0f per %.0f refresh(es), display %.4f Hz -> %.4f Hz ticks\n", p, q, 1e6 / dp, 1e6 / pg); }
 +                  } else if (said != 2) { said = 2; fprintf(stderr, "[vblank-lock] not locking: %.3f Hz ticks vs "
-+                      "%.4f Hz display is not a whole multiple\n", 1e6 / vb_period_us, 1e6 / dp); }
++                      "%.4f Hz display is no ratio of 4 refreshes or fewer\n", 1e6 / vb_period_us, 1e6 / dp); }
 +              } }
              fired++;
          }
          if (fired >= 240) next_tick = now;   /* fell too far behind -> resync */
-@@ -523,10 +619,7 @@ static DWORD WINAPI vblank_ticker(LPVOID)
+@@ -523,10 +633,7 @@ static DWORD WINAPI vblank_ticker(LPVOID)
           * at 16ms per fence wave's six passes paced the guest to ~7 fps.
           * The real RSX writes those fences in microseconds. */
          if (rsx_ok) {
@@ -18312,7 +18326,7 @@ index a55afb0..e041889 100644
              cellGcm_rsx_process_fifo();
          }
          /* YDKJ_INJECT_Q3: the main thread polls q3 (load/state-complete) each frame but
-@@ -934,45 +1027,45 @@ static DWORD WINAPI debug_console(LPVOID param)
+@@ -934,45 +1041,45 @@ static DWORD WINAPI debug_console(LPVOID param)
              dump_threads("console", self);
          } else if (!strcmp(verb, "find32") && sscanf(cmd, "%*s %x", &a) == 1) {
              /* find32 <hex>: every aligned big-endian u32 equal to <hex> in committed
@@ -18387,7 +18401,7 @@ index a55afb0..e041889 100644
          } else if (!strcmp(verb, "prof") && sscanf(cmd, "%*s %u %u", &a, &b) >= 1) {
              dbg_prof((DWORD)a, b ? b : 5);
          } else if (!strcmp(verb, "hle")) {
-@@ -1083,8 +1176,67 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
+@@ -1083,8 +1190,67 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
  }
  #endif
  
@@ -18455,7 +18469,7 @@ index a55afb0..e041889 100644
      /* <PPU ELF> [--username NAME] [--psnr host[:port]], flags in any order. */
      const char* elf = NULL;
      const char* username = NULL;
-@@ -1106,6 +1258,7 @@ int main(int argc, char** argv)
+@@ -1106,6 +1272,7 @@ int main(int argc, char** argv)
  
  #ifdef _WIN32
  #pragma comment(lib, "winmm.lib")
@@ -18463,7 +18477,7 @@ index a55afb0..e041889 100644
      timeBeginPeriod(1);   /* 1ms timer resolution: the default ~15.6ms granularity
                             * inflates every sub-15ms wait (the game's event polls,
                             * usleeps) and throttled the whole title. */
-@@ -1242,7 +1395,8 @@ int main(int argc, char** argv)
+@@ -1242,7 +1409,8 @@ int main(int argc, char** argv)
  #ifdef _WIN32
      fprintf(stderr, "[boot] MAIN guest thread tid=%lu\n", (unsigned long)GetCurrentThreadId());
  #endif

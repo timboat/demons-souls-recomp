@@ -2270,6 +2270,23 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       jump. No match = the old fall-through, logged. DES_SETJMP_LOG=1 logs each jump.
     - Checked: the unattended repro (warp into the arena, god mode) crashed ~1 min in before; the user's hand
       test with the fix, ~7 min in the fight with no crash, logged 3 caught Lua errors (stack 4-5 entries).
+102. **60 fps on a 180 Hz (or 240 Hz) monitor judders: the vblank lock only took whole multiples (2026-11-07,
+    GitHub issue 31: i7-11700K + RTX 5060 Ti, 180 Hz and 120 Hz, "choppy despite high FPS"; 4 reports):**
+    - At 180 Hz each 60 fps frame should stay up 3 refreshes; the reports show 3 / 4 / 2 (17-22% at 4), and
+      perf_report blames "no CPU-side delay" for most hitches (658 a minute in one): frames ready on time,
+      shown a refresh late. The guest's 120 Hz vblank ticks were free-running against the 179.98 Hz display:
+      fix 53's lock needed a whole number of ticks per refresh (120 Hz on 120 Hz locks; 120 on 180 is 2 ticks
+      per 3 refreshes and did not), so the two clocks drifted past each other -- fix 53's judder again.
+    - Fix (boot_main.cpp vblank_ticker): lock when p ticks fit q refreshes for some q <= 4 (the smallest, so p
+      and q share no factor): 180 Hz 2:3, 240 Hz 1:2; 144 / 165 Hz still do not fit 60 fps and stay free.
+      The display fit's base is just a recent vblank and moves one refresh at a time, so ticks snap to the grid
+      every such base shares, steps of refresh / p (each tick q steps on). Snapping to the tick period itself
+      from that moving base was the first try: in a test its ticks ran 68.7 instead of 66.7 Hz.
+    - Checked (100 Hz monitor, the same 2:3 ratio as 66.667 Hz ticks = 33 fps, present interval 1, 70 s in
+      game): free-running 2.6% 2-refresh + 2.6% 4-refresh frames, 51.5 hitches a minute; locked 99.96% 3,
+      0.9 a minute. q = 1 (every rate that locked before) runs the same code as before.
+    - The 120 Hz report (locked) still has 11.6% frames a refresh late: those present 3-7 ms after the tick
+      instead of 0-2 ms, i.e. the render side ran late, in a window (compositor); not addressed here.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
