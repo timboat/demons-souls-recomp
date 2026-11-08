@@ -3134,6 +3134,26 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       line (plus its index and hunk line numbers). The whole patch passes `git apply --check` under core.autocrlf
       false, true and input on a clean worktree. Built with plain `mac/rebuild.sh`; a 70 s sandbox boot with no input played the
       title's opening movie with no crash. Mac keyboard and mouse look still go through the host_window path, untouched here.
+132. **Metal: real ZPASS occlusion counts, lens flares no longer blow out (2026-11-08, MacBook M2 Pro):**
+    - Measured: the Metal backend had no occlusion path, so every ZPASS report was the walker's 0xFFFF. In the Nexus (sandbox
+      save, DES_WARP_AT=60:1,0,999) a huge white flare with coloured rings shone through the ceiling. That is
+      fix 38's bug, on Metal.
+    - Fix: rsx_metal_backend.m eng_occ_*, following ld_occ_* (fix 38). Each draw made while 0x17CC is on gets a slot in a
+      65536-slot visibility result buffer (counting mode). A report is the sum of the slots since the last clear, stored
+      with gcm_report_store_value when the command buffer has completed, so at most a frame late. Sets
+      g_gcm_zpass_by_host. A draw never encoded (its pipeline still building) counts 0. The engine passes raw methods
+      through g_rsx_engine_method_observer in rsx_draw_engine.c, which only the Metal backend sets, so Windows and Linux
+      are unchanged. RSX_ENGINE_OCCLUSION=0 = the old 0xFFFF; RSX_ENGINE_OCC_DBG=1 logs reports (3 = all).
+    - Checked, same save and spot, 100 s each: RSX_ENGINE_OCCLUSION=0 draws the blow-out; a temporary build with the probe's
+      depth test forced open read exactly 576 (24x24, the probe's area) on all 2066 reports and drew a small soft flare at
+      the ceiling; the real count read 0 on all 1942 reports and drew no flare, the probe being behind the ceiling
+      as fix 38 found on D3D12. Shrine of Storms also read 0 on every report (576 on 1551 of 1561 with the depth test forced).
+      Boletaria (start and 2,0,999) and the Stonefang archstone (6,0,999) sent no flare reports at that camera.
+      No crash or command buffer error. The temporary control is not in the patch.
+    - Not seen yet: a partly visible flare (a count between 0 and 576) or a side-by-side with the Windows picture. No spot with
+      the light in open sky was found here either.
+    - Seen on the way: Boletaria at 21-34 fps when moving with live input, 28-29 at the 2,0,999 start and 48-52 at the save's
+      spot, standing still. The render settings did not change these: step 3 of the Mac list.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

@@ -10167,7 +10167,7 @@ index c4e4d84..5a56bdd 100644
  /* ---- decoded state getters -------------------------------------------- */
  
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 8dff601..114c995 100644
+index 8dff6011..dd46b243 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -1489,6 +1489,59 @@ static int eng_surface_to_guest(u32 slot)
@@ -10283,6 +10283,20 @@ index 8dff601..114c995 100644
      pd_present(target);
      g.last_present_surface = target;
      g.be->present(g.be->user, g.surfaces[target].handle);
+@@ -3484,9 +3562,13 @@ void rsx_draw_engine_shutdown(void)
+     g.be = be;
+ }
+ 
++/* Set by a backend that follows raw methods itself (Metal: the ZPASS occlusion counters). */
++void (*g_rsx_engine_method_observer)(u32 method, u32 arg);
++
+ void rsx_draw_engine_method(u32 method, u32 arg)
+ {
+     if (!g.ready) return;
++    if (g_rsx_engine_method_observer) g_rsx_engine_method_observer(method, arg);
+     /* The subchannel is a binding slot, not an engine selector, and a title
+      * whose SPU-built command lists bind NV4097 elsewhere would otherwise
+      * store its state in the wrong register bank.  Standard NV4097 methods
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
 index cfb9685..3d74415 100644
 --- a/libs/video/rsx_fp_decompiler.c
@@ -17608,7 +17622,7 @@ index 2579117..167f9fa 100644
      if (dc.refs) { free(dc.refs); dc.refs = NULL; dc.cap_refs = 0; }
      if (dc.compact_verts) {
 diff --git a/libs/video/rsx_metal_backend.m b/libs/video/rsx_metal_backend.m
-index ad8db0b..491a956 100644
+index ad8db0b5..828115b4 100644
 --- a/libs/video/rsx_metal_backend.m
 +++ b/libs/video/rsx_metal_backend.m
 @@ -54,6 +54,13 @@
@@ -17681,7 +17695,127 @@ index ad8db0b..491a956 100644
  static EngPipeline s_eng_pipe[ENG_MAX_PIPES];
  static u32 s_eng_pipe_count;
  
-@@ -2601,14 +2635,31 @@ static void release_surfaces(void)
+@@ -2559,12 +2593,119 @@ static void release_surfaces(void)
+     /* Polygon offset in Metal's terms (setDepthBias:slopeScale:clamp:),
+      * dynamic encoder state like the stencil reference. */
+     float depth_bias, depth_slope;
++    u32   occ_q;                /* ZPASS query index of this draw, ~0u when not counting */
+ } EngRecord;
+ 
+ static EngRecord s_eng_rec[ENG_MAX_RECORDS];
+ static u32 s_eng_rec_count;
+ static u32 s_eng_dropped;
+ 
++/* ZPASS occlusion counts (NOTES fix 132; the D3D12 path is ld_occ_* in rsx_live_draw.c, fix 38).
++ * RSX counts the samples that pass the depth and stencil tests while SET_ZPASS_PIXEL_COUNT_ENABLE
++ * (0x17CC) is set; CLEAR_REPORT_VALUE (0x17C8) type 1 zeroes the counter and GET_REPORT (0x1800)
++ * type 1 stores it. Every draw made while counting is on gets a slot in a visibility result buffer
++ * (counting mode); a report is the sum of the slots since the last clear, stored into guest memory
++ * when the command buffer holding those draws has completed. That is a frame late at most: the
++ * title checks its own label for the report and reads the previous value until the new one is in.
++ * Without this every ZPASS report is 0xFFFF and Demon's Souls' lens flares draw at ~114x full
++ * strength. RSX_ENGINE_OCCLUSION=0 = the old 0xFFFF; RSX_ENGINE_OCC_DBG=1 logs the first 64 reports
++ * (3 = all). All of it runs on the RSX thread except the store, in the completion handler. */
++#define ENG_OCC_Q       65536u   /* slots in the buffer (a ring, free-running indices) */
++#define ENG_OCC_PENDING 4096u    /* reports waiting for the next commit */
++typedef struct { u32 off, from, to; int main_mem; } EngOccReport;
++static id<MTLBuffer> s_occ_buf;
++static u64* s_occ_map;
++static int s_occ_on = -1, s_occ_enabled, s_occ_main_mem, s_occ_recorded;
++static u32 s_occ_next, s_occ_clear, s_occ_handed, s_occ_npend;
++static _Atomic u32 s_occ_done;   /* slots below this are free to reuse */
++static EngOccReport s_occ_pend[ENG_OCC_PENDING];
++extern int g_gcm_zpass_by_host;
++void gcm_report_store_value(int main_mem, u32 off, u32 value);
++extern void (*g_rsx_engine_method_observer)(u32 method, u32 arg);
++
++static int eng_occ_ready(void)
++{
++    if (s_occ_on >= 0) return s_occ_on;
++    s_occ_on = 0;
++    const char* e = getenv("RSX_ENGINE_OCCLUSION");
++    if ((e && *e == '0') || !s_dev) return 0;
++    s_occ_buf = [s_dev newBufferWithLength:ENG_OCC_Q * sizeof(u64)
++                                   options:MTLResourceStorageModeShared];
++    if (!s_occ_buf) {
++        fprintf(stderr, "[occlusion] no visibility buffer; ZPASS reports stay 0xFFFF\n");
++        return 0;
++    }
++    s_occ_map = (u64*)[s_occ_buf contents];
++    s_occ_on = 1;
++    g_gcm_zpass_by_host = 1;
++    fprintf(stderr, "[occlusion] ZPASS reports measured with a %u-slot Metal visibility buffer\n", ENG_OCC_Q);
++    return 1;
++}
++
++static void eng_occ_method(u32 method, u32 arg)
++{
++    const u32 m = method & 0x1FFCu;
++    if (m != 0x17CCu && m != 0x17C8u && m != 0x1800u && m != 0x01A8u) return;
++    if (m == 0x01A8u) { s_occ_main_mem = arg == 0xFEED0001u || arg == 0xBAD68000u; return; }
++    if (!eng_occ_ready()) return;
++    if (m == 0x17CCu) s_occ_enabled = arg != 0;
++    else if (m == 0x17C8u) { if (arg == 1u) s_occ_clear = s_occ_next; }
++    else if ((arg >> 24) == 1u && s_occ_npend < ENG_OCC_PENDING) {
++        EngOccReport* r = &s_occ_pend[s_occ_npend++];
++        r->off = arg & 0xFFFFFFu; r->from = s_occ_clear; r->to = s_occ_next;
++        r->main_mem = s_occ_main_mem;
++    }
++}
++
++/* The slot for a draw being recorded, or ~0u when not counting. Starts at zero, so a draw that is
++ * never encoded (its pipeline still building, say) counts as nothing drawn. */
++static u32 eng_occ_begin(void)
++{
++    if (!s_occ_enabled || s_occ_on != 1) return ~0u;
++    if (s_occ_next - atomic_load_explicit(&s_occ_done, memory_order_acquire) >= ENG_OCC_Q - 1u)
++        return ~0u;
++    const u32 q = s_occ_next++;
++    s_occ_map[q % ENG_OCC_Q] = 0;
++    s_occ_recorded = 1;
++    return q;
++}
++
++/* After a commit's records are encoded: every slot so far is in this command buffer or an earlier
++ * one, so the waiting reports can be stored when it completes. */
++static void eng_occ_hand_off(id<MTLCommandBuffer> cb)
++{
++    if (s_occ_on != 1 || (!s_occ_npend && s_occ_next == s_occ_handed)) return;
++    const u32 free_below = s_occ_clear;   /* later reports start at this clear or a later one */
++    u32 n = s_occ_npend;
++    EngOccReport* reports = NULL;
++    if (n) {
++        reports = malloc(n * sizeof *reports);
++        if (reports) memcpy(reports, s_occ_pend, n * sizeof *reports); else n = 0;
++    }
++    s_occ_npend = 0;
++    s_occ_handed = s_occ_next;
++    s_occ_recorded = 0;
++    const u64* map = s_occ_map;
++    id<MTLBuffer> keep = s_occ_buf;
++    [cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
++        (void)keep;
++        const int ok = [done status] == MTLCommandBufferStatusCompleted;
++        static int dbg = -1; static u32 shown;
++        if (dbg < 0) dbg = getenv("RSX_ENGINE_OCC_DBG") ? atoi(getenv("RSX_ENGINE_OCC_DBG")) : 0;
++        for (u32 i = 0; ok && i < n; i++) {
++            u64 sum = 0;
++            for (u32 q = reports[i].from; q != reports[i].to; q++) sum += map[q % ENG_OCC_Q];
++            gcm_report_store_value(reports[i].main_mem, reports[i].off,
++                                   sum > 0xFFFFFFFFull ? 0xFFFFFFFFu : (u32)sum);
++            if (dbg && (dbg >= 3 || shown < 64u)) { shown++;
++                fprintf(stderr, "[occlusion] report off=0x%X draws=%u samples=%llu\n", reports[i].off,
++                        reports[i].to - reports[i].from, (unsigned long long)sum); }
++        }
++        free(reports);
++        atomic_store_explicit(&s_occ_done, free_below, memory_order_release);
++    }];
++}
++
+ static u8* s_eng_stage;
+ static u32 s_eng_stage_used, s_eng_stage_cap;
+ /* The staging arena is the contents of a shared MTLBuffer, handed to the
+@@ -2601,14 +2742,31 @@ static void release_surfaces(void)
   * sample (and gamma) it always was.
   *   PS3_AA=fxaa        FXAA 3.11 (quality preset 29) on the display buffer,
   *                      at the guest's resolution, before the present
@@ -17714,7 +17848,7 @@ index ad8db0b..491a956 100644
  
  static float eng_sharpen_from(const char* e)
  {
-@@ -2616,20 +2667,37 @@ static float eng_sharpen_from(const char* e)
+@@ -2616,20 +2774,37 @@ static float eng_sharpen_from(const char* e)
      const double v = strtod(e, NULL);
      return !(v > 0.0) ? 0.0f : v > 1.0 ? 1.0f : (float)v;
  }
@@ -17757,7 +17891,7 @@ index ad8db0b..491a956 100644
  }
  
  static NSString* const kEngHelperMSL = @
-@@ -2658,9 +2726,10 @@ static void eng_post_options(void)
+@@ -2658,9 +2833,10 @@ static void eng_post_options(void)
  "}\n"
  /* The present: optional contrast-adaptive sharpening (AMD FidelityFX CAS,
   * the non-scaling form: a cross whose negative weight grows where the 3x3
@@ -17771,7 +17905,7 @@ index ad8db0b..491a956 100644
  "fragment float4 eng_present_fs(BOut i [[stage_in]],\n"
  "                               texture2d<float> src [[texture(0)]],\n"
  "                               sampler s [[sampler(0)]],\n"
-@@ -2685,6 +2754,15 @@ static void eng_post_options(void)
+@@ -2685,6 +2861,15 @@ static void eng_post_options(void)
  "        float3 w = amp * (-1.0 / mix(8.0, 5.0, saturate(p.sharp)));\n"
  "        c.rgb = saturate((b * w + l * w + r * w + h * w + e) / (1.0 + 4.0 * w));\n"
  "    }\n"
@@ -17787,7 +17921,7 @@ index ad8db0b..491a956 100644
  "    if (p.gamma != 1.0) c.rgb = pow(max(c.rgb, 0.0), float3(p.gamma));\n"
  "    return c;\n"
  "}\n"
-@@ -2927,6 +3005,7 @@ static void eng_stage_hand_off(id<MTLCommandBuffer> cb, id<MTLBuffer> stage)
+@@ -2927,6 +3112,7 @@ static void eng_stage_hand_off(id<MTLCommandBuffer> cb, id<MTLBuffer> stage)
      s_eng_stage_cap = 0;
  }
  
@@ -17795,7 +17929,7 @@ index ad8db0b..491a956 100644
  static int eng_stage_reserve(u32 bytes, u32* out_off)
  {
      const u32 start = (s_eng_stage_used + ENG_ALIGN - 1u) & ~(ENG_ALIGN - 1u);
-@@ -2937,7 +3016,13 @@ static int eng_stage_reserve(u32 bytes, u32* out_off)
+@@ -2937,7 +3123,13 @@ static int eng_stage_reserve(u32 bytes, u32* out_off)
          return eng_stage_reserve(bytes, out_off);
      }
      if (start + bytes > s_eng_stage_cap) {
@@ -17809,7 +17943,7 @@ index ad8db0b..491a956 100644
          while (start + bytes > cap) cap *= 2u;
          /* A pool of its own: the caller is the FIFO walker, a PPU host thread
           * with no autorelease pool, and the driver's -contents autoreleases
-@@ -2957,6 +3042,7 @@ static int eng_stage_reserve(u32 bytes, u32* out_off)
+@@ -2957,6 +3149,7 @@ static int eng_stage_reserve(u32 bytes, u32* out_off)
      }
      *out_off = start;
      s_eng_stage_used = start + bytes;
@@ -17817,7 +17951,7 @@ index ad8db0b..491a956 100644
      return 1;
  }
  
-@@ -3031,6 +3117,10 @@ static void eng_shutdown(void* user)
+@@ -3031,6 +3224,10 @@ static void eng_shutdown(void* user)
      s_eng_linear_sampler = nil;
      s_eng_fxaa_pso = nil;
      s_eng_fxaa_tex = nil;
@@ -17828,7 +17962,7 @@ index ad8db0b..491a956 100644
      s_eng_active = 0;
      s_eng_encoding_failed = 0;
      s_eng_checked_completed = 0;
-@@ -3294,8 +3384,19 @@ static u32 eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
+@@ -3294,8 +3491,19 @@ static u32 eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
  
  /* ---- pipelines ----------------------------------------------------------- */
  
@@ -17848,7 +17982,7 @@ index ad8db0b..491a956 100644
  {
      const u64 hash = fnv1a64(hlsl, (u32)strlen(hlsl), 1469598103934665603ull);
      for (u32 i = 0; i < s_eng_func_count; i++)
-@@ -3321,21 +3422,20 @@ static u32 eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
+@@ -3321,21 +3529,20 @@ static u32 eng_depth_as_color(void* user, u32 depth, u32 w, u32 h, u32 rsx_fmt)
      return fn;
  }
  
@@ -17881,7 +18015,7 @@ index ad8db0b..491a956 100644
  
      /* Attribute index is the layout SLOT, not the guest's ATTRn number.
       * glslang numbers an HLSL input struct's members in DECLARATION order --
-@@ -3411,10 +3511,47 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
+@@ -3411,10 +3618,47 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
      NSError* err = nil;
      id<MTLRenderPipelineState> pso =
          [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
@@ -17931,7 +18065,7 @@ index ad8db0b..491a956 100644
      }
  
      /* Depth and stencil are pipeline state in D3D12 and an encoder object in
-@@ -3452,6 +3589,7 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
+@@ -3452,6 +3696,7 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
      const u32 slot = s_eng_pipe_count++;
      s_eng_pipe[slot].pso = pso;
      s_eng_pipe[slot].ds  = ds;
@@ -17939,7 +18073,7 @@ index ad8db0b..491a956 100644
      /* CULL_FACE FRONT=0x0404 BACK=0x0405 FRONT_AND_BACK=0x0408 (front here,
       * as in the D3D12 engine); FRONT_FACE CW=0x0900 CCW=0x0901. */
      s_eng_pipe[slot].cull = MTLCullModeNone;
-@@ -3463,6 +3601,29 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
+@@ -3463,6 +3708,29 @@ static u32 eng_pipeline_create(void* user, const char* vs_hlsl, const char* ps_h
      s_eng_pipe[slot].winding = (rs->front_face == 0x0901u)
                                     ? MTLWindingCounterClockwise
                                     : MTLWindingClockwise;
@@ -17969,7 +18103,15 @@ index ad8db0b..491a956 100644
      return slot + 1;
  }
  
-@@ -3718,6 +3879,14 @@ static void eng_encode_draw(id<MTLRenderCommandEncoder> enc, const EngRecord* r,
+@@ -3647,6 +3915,7 @@ static void eng_draw(void* user, rsx_topology topology, const void* vertices,
+     r->vertex_count = vertex_count;
+     r->ib_off       = ib_off;
+     r->index_count  = indices ? index_count : 0;
++    r->occ_q        = eng_occ_begin();
+ }
+ 
+ static void eng_clear_color(void* user, u32 surface, const float rgba[4])
+@@ -3718,6 +3987,14 @@ static void eng_encode_draw(id<MTLRenderCommandEncoder> enc, const EngRecord* r,
  {
      if (!r->pipeline || r->pipeline > s_eng_pipe_count) { s_eng_encoding_failed = 1; return; }
      const EngPipeline* p = &s_eng_pipe[r->pipeline - 1];
@@ -17984,7 +18126,34 @@ index ad8db0b..491a956 100644
      if (!p->pso) { s_eng_encoding_failed = 1; return; }
      [enc setRenderPipelineState:p->pso];
      [enc setDepthStencilState:p->ds];
-@@ -4190,19 +4359,122 @@ static void eng_encode_records(id<MTLCommandBuffer> cb, id<MTLBuffer> stage)
+@@ -3750,6 +4027,9 @@ static void eng_encode_draw(id<MTLRenderCommandEncoder> enc, const EngRecord* r,
+      * strip's shared vertices from being fetched and uploaded per triangle.
+      * Only a rebuilt triangle list is ever indexed; points and lines arrive as
+      * the guest issued them. */
++    if (r->occ_q != ~0u)
++        [enc setVisibilityResultMode:MTLVisibilityResultModeCounting
++                              offset:(NSUInteger)(r->occ_q % ENG_OCC_Q) * sizeof(u64)];
+     if (r->index_count)
+         [enc drawIndexedPrimitives:r->topology
+                         indexCount:r->index_count
+@@ -3759,6 +4039,8 @@ static void eng_encode_draw(id<MTLRenderCommandEncoder> enc, const EngRecord* r,
+     else
+         [enc drawPrimitives:r->topology
+                 vertexStart:0 vertexCount:r->vertex_count];
++    if (r->occ_q != ~0u)
++        [enc setVisibilityResultMode:MTLVisibilityResultModeDisabled offset:0];
+ }
+ 
+ /* Is this record aimed at exactly these colour attachments, in this order? */
+@@ -4120,6 +4402,7 @@ static void eng_encode_records(id<MTLCommandBuffer> cb, id<MTLBuffer> stage)
+             rp.renderTargetWidth  = [zbuf width];
+             rp.renderTargetHeight = [zbuf height];
+         }
++        if (s_occ_recorded) rp.visibilityResultBuffer = s_occ_buf;
+ 
+         id<MTLRenderCommandEncoder> enc = [cb renderCommandEncoderWithDescriptor:rp];
+         /* A draw's pipeline declares as many colour attachments as its record
+@@ -4190,19 +4473,122 @@ static void eng_encode_records(id<MTLCommandBuffer> cb, id<MTLBuffer> stage)
      return s_eng_fxaa_tex;
  }
  
@@ -18110,7 +18279,7 @@ index ad8db0b..491a956 100644
      if (!s_eng_blit_pso || s_eng_blit_pso_fmt != [dst pixelFormat]) {
          MTLRenderPipelineDescriptor* pd = [MTLRenderPipelineDescriptor new];
          pd.vertexFunction   = [s_eng_helper_lib newFunctionWithName:@"eng_fullscreen_vs"];
-@@ -4230,9 +4502,10 @@ static void eng_blit_to_display(id<MTLCommandBuffer> cb, id<MTLTexture> src,
+@@ -4230,9 +4616,10 @@ static void eng_blit_to_display(id<MTLCommandBuffer> cb, id<MTLTexture> src,
       * setting): out = in^gamma, as RPCS3's calibration pass applies it. The
       * sharpening taps are one source texel apart. */
      { extern float cellAvconfExt_display_gamma(void);
@@ -18123,7 +18292,15 @@ index ad8db0b..491a956 100644
        [e setFragmentBytes:&p length:sizeof p atIndex:0]; }
      [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
      [e endEncoding];
-@@ -4340,6 +4613,7 @@ static void eng_encode_and_commit(id<MTLTexture> present_dst)
+@@ -4292,6 +4679,7 @@ static void eng_encode_and_commit(id<MTLTexture> present_dst)
+         const uint64_t ft_e0 = PS3_FT_ON() ? ps3_ft_now() : 0;
+         const u32 ft_nrec = s_eng_rec_count;
+         eng_encode_records(cb, stage);
++        eng_occ_hand_off(cb);
+         if (present_dst && dst) eng_blit_to_display(cb, present_dst, dst);
+         if (drawable) { fps_track_drawable(drawable); [cb presentDrawable:drawable]; }
+         if (ft_e0) ps3_ft_span(PS3_FT_GPU_ENCODE, 0, present_dst ? 1u : 0u, ft_nrec, ft_e0, ps3_ft_now());
+@@ -4340,6 +4728,7 @@ static void eng_encode_and_commit(id<MTLTexture> present_dst)
          }
          s_eng_rec_count  = 0;
          s_eng_stage_used = 0;
@@ -18131,7 +18308,23 @@ index ad8db0b..491a956 100644
          eng_collect_retired_objects();
      }
  }
-@@ -4659,10 +4933,17 @@ void rsx_metal_backend_shutdown(void)
+@@ -4595,6 +4984,7 @@ int rsx_metal_backend_init(u32 width, u32 height, const char* title)
+         if (rsx_draw_engine_enabled() &&
+             rsx_draw_engine_init(s_width, s_height) == 0) {
+             s_eng_active = 1;
++            g_rsx_engine_method_observer = eng_occ_method;
+         } else {
+             rsx_set_backend(&s_backend_vtable);
+         }
+@@ -4611,6 +5001,7 @@ void rsx_metal_backend_shutdown(void)
+ {
+     @autoreleasepool {
+         if (s_ready) rsx_set_backend(NULL);
++        g_rsx_engine_method_observer = NULL;
+         if (s_eng_active) rsx_draw_engine_shutdown();
+         rsx_draw_engine_set_backend(NULL);
+         /* Reclaim every in-flight slot so no command buffer is still
+@@ -4659,10 +5050,17 @@ void rsx_metal_backend_shutdown(void)
      }
  }
  
@@ -18149,7 +18342,7 @@ index ad8db0b..491a956 100644
      @autoreleasepool {
          for (;;) {
              NSEvent* ev = [NSApp nextEventMatchingMask:NSEventMaskAny
-@@ -4682,8 +4963,14 @@ static int pump_messages_impl(void)
+@@ -4682,8 +5080,14 @@ static int pump_messages_impl(void)
                  }
                  continue;
              }
