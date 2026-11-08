@@ -12,7 +12,7 @@ screenshots. Bug reports with a REPORT.bat zip are best as a GitHub issue.
 
 ## Status
 
-- **The whole game seems playable**, with sound, music and movies, on keyboard + mouse or an Xbox controller.
+- **The whole game is playable**, with sound, music and movies, on keyboard + mouse or an Xbox controller.
 - **60 fps** is recommended (50 on a 100 Hz screen). 30, uncapped and any custom rate work too. Above 60 fps
   there are still known bugs, such as the sound drifting out of sync.
 - **No online play yet.** Multiplayer comes once the game is optimised.
