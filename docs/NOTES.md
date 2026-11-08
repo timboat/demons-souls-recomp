@@ -2463,6 +2463,31 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       no pc write on entry. Accepted: the steps counter advances differently (only zero / non-zero is used).
     - Next: the channel operations themselves (spu_wrch / spu_rdch per LSA / EAL / size / tag write) as direct field
       writes, one at a time with A/B; then the cmd 33 / 34 handlers (11% / 3% of the dispatcher).
+113. **Latria 4-2 uncapped 61.8 -> 65.2 fps on a 5800X: four more SPU channel writes skip spu_wrch
+     (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - After fix 112 the dispatcher ("spu job") is still HighGraphics' critical path (uncapped Latria: HighGraphics 98%
+      busy, 38% of its samples in the 0x9023 wait). Its RIP profile: des_dispq_native 25%, spu_wrch 18%,
+      mfc_do_transfer 6%, mfc_channel_write 5%. Fix 34's inline channel path in lifted code (spu_helpers.h) already
+      covers LSA / EAH / EAL / size / tag / tag mask; the per-command MFC_Cmd (the entry GET, the cursor PUT),
+      MFC_WrTagUpdate (twice) and SPU_WrEventMask writes still went through spu_wrch: the diagnostics test, the
+      atomic-command classification in spu_mfc_atomic, channel_is_mfc and the switch, each time.
+    - Fix (runtime/spu/spu_helpers.h, spu_channels.c): with spu_wrch's fix 77 diagnostics off -- its lazy flag is now
+      the exported g_spu_wrch_diag; -1 = not looked up yet, so the first write still goes through spu_wrch and looks
+      them up -- the lifted fast path does SPU_WrEventMask as the field store, channel 69 as the no-op it is in
+      spu_wrch, MFC_WrTagUpdate through spu_wrch_mfc_tagupd and a non-atomic MFC_Cmd through spu_wrch_mfc_dma. Those
+      two are spu_wrch's own statements for those channels in the same order (mfc_channel_write, then the tag event
+      and wake; for a DMA command spu_mfc_atomic only cleared fix 111's flag and returned 0). GETLLAR / PUTLLC /
+      PUTLLUC / PUTQLLUC (compared on the full 32-bit value, as spu_mfc_atomic does) still go through spu_wrch. It
+      applies to every lifted SPU image, not only the dispatcher. SPU_NO_CHANNEL_FAST turns the whole path off.
+    - A/B at Latria 4-2 uncapped (PS3_VBLANK_HZ=480 DES_MAX_FPS=240 LD_PRESENT_INTERVAL=0; main bd25367 vs this,
+      alternating, 3 each): 61.0 / 62.1 / 62.3 -> 65.0 / 65.2 / 65.5 fps, p99 20.6-22.2 -> 19.5-20.5 ms.
+      At the 60 cap, 2 each: 58.9 / 58.8 -> 59.2 / 59.2, frames over 25 ms 6 / 5 -> 1 / 2. Tour (Shrine 3-1 x2,
+      Latria 4-1 / 4-2, Boletaria 1-1, Valley 5-1, the Nexus; turns + a walk): every stop 59.2-60 mean, no aborts,
+      halts or [dispq] lines.
+    - Review (2 agents + a completeness critic: exact equivalence per channel; builds, links, tests, patch): no
+      divergence. Noted: with SPU_LOCK_SITES the lock-line acquisitions of plain PUTs are attributed to
+      spu_wrch_mfc_dma instead of spu_wrch (counts unchanged); the externs are C-linkage only for C (no C++ unit
+      defines SPU_USE_DISPATCH_MT).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

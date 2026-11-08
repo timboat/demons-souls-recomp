@@ -18658,7 +18658,7 @@ index a55afb0..876be33 100644
      /* A guest that called sys_process_exit never reaches this line: that path
       * ends in the host exit(). Getting here means the entry function returned
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 5fc5020..cf1f5a8 100644
+index 5fc5020..5a599b5 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -57,6 +57,9 @@ static uint64_t spu_host_ns(void)
@@ -18807,7 +18807,7 @@ index 5fc5020..cf1f5a8 100644
 + * statics, and with any set the same code runs at the same point in the same
 + * order. Nothing in the tree sets these variables at run time. -1 = not looked
 + * up yet. */
-+static int s_wrch_diag = -1;
++int g_spu_wrch_diag = -1;   /* fix 113: exported for the lifted-code channel fast path (spu_helpers.h) */
 +static SPU_NOINLINE_COLD int spu_wrch_diag_init(void)
 +{
 +    static const char* const names[] = {
@@ -18833,9 +18833,9 @@ index 5fc5020..cf1f5a8 100644
 -    uint32_t lsa = ctx->mfc_lsa & SPU_LS_MASK;
 -    uint8_t* ls  = &ctx->ls[lsa];
 -    uint8_t* mem = vm_base + ea;
-+    if (__builtin_expect(s_wrch_diag == 0, 1)) return 0;
-+    if (s_wrch_diag < 0) s_wrch_diag = spu_wrch_diag_init();
-+    return s_wrch_diag;
++    if (__builtin_expect(g_spu_wrch_diag == 0, 1)) return 0;
++    if (g_spu_wrch_diag < 0) g_spu_wrch_diag = spu_wrch_diag_init();
++    return g_spu_wrch_diag;
 +}
  
 +/* Atomic, before the uncommitted-EA guard: SPU_POLLTRACE .. [tset]. */
@@ -19456,7 +19456,7 @@ index 5fc5020..cf1f5a8 100644
      case SPU_WrSRR0:         ctx->srr0 = v;                                 break;
      default:
          /* Unknown / unhandled channel write -- ignore (matches a no-op SPU). */
-@@ -1080,6 +1383,15 @@ void spu_wrch(spu_context* ctx, uint32_t channel, u128 value)
+@@ -1080,6 +1383,33 @@ void spu_wrch(spu_context* ctx, uint32_t channel, u128 value)
      }
  }
  
@@ -19469,10 +19469,28 @@ index 5fc5020..cf1f5a8 100644
 +    t_mfc_light = 0;
 +}
 +
++/* fix 113: spu_wrch's own MFC_Cmd (non-atomic command) and MFC_WrTagUpdate paths, for the lifted
++ * code's channel fast path (spu_helpers.h), which calls them only with the fix 77 diagnostics off.
++ * The same statements in the same order: spu_mfc_atomic would only clear t_mfc_light and return 0
++ * for a plain DMA command. */
++void spu_wrch_mfc_dma(spu_context* ctx, uint32_t cmd)
++{
++    t_mfc_light = 0;
++    mfc_channel_write(mfc_for(ctx), ctx, MFC_Cmd, cmd);
++}
++void spu_wrch_mfc_tagupd(spu_context* ctx, uint32_t v)
++{
++    mfc_channel_write(mfc_for(ctx), ctx, MFC_WrTagUpdate, v);
++    if (v != 0 && (ctx->event_mask & 0x1u)) {
++        SPU_EVENT_SET(ctx, 0x1u);
++        spu_ch_wake(ctx);
++    }
++}
++
  /* ===========================================================================
   * Channel-stall contract (faithful-adopt, from canersaka's fork).
   *
-@@ -1131,6 +1443,7 @@ static void spu_resv_lost_poll(spu_context* ctx)
+@@ -1131,6 +1461,7 @@ static void spu_resv_lost_poll(spu_context* ctx)
      if (!vm_base || ctx->resv_ea == 0) return;
      if (memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0) {
          ctx->resv_valid = 0;
@@ -19480,7 +19498,7 @@ index 5fc5020..cf1f5a8 100644
          SPU_EVENT_SET(ctx, 0x400u);
      }
  }
-@@ -1234,6 +1547,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1234,6 +1565,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
       * raise above), but only block it when the SPU has actually enabled events
       * (event_mask != 0) -- a masked-off read must return 0 immediately, not
       * park forever. RdInMbox/RdSigNotify park on their PPU producers. */
@@ -19521,7 +19539,7 @@ index 5fc5020..cf1f5a8 100644
      if (channel == SPU_RdInMbox || channel == SPU_RdSigNotify1 || channel == SPU_RdSigNotify2)
          spu_ch_wait(ctx, channel, "rdch");
      else if (channel == SPU_RdEventStat && ctx->event_mask != 0)
-@@ -1298,7 +1645,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1298,7 +1663,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
          break;
      }
      case SPU_RdEventMask:   v = ctx->event_mask;                        break;
@@ -19543,7 +19561,7 @@ index 5fc5020..cf1f5a8 100644
      /* CBEA 9.8: numeric bit 0 is interrupt-enable, independent of run status.
       * This runtime models nonisolated SPUs, so the isolation bit stays clear. */
      case SPU_RdMachStat:    v = ctx->int_enable & 1u; break;
-@@ -1887,14 +2247,35 @@ static int spu_ovl_ea_known(uint32_t ea)
+@@ -1887,14 +2265,35 @@ static int spu_ovl_ea_known(uint32_t ea)
      return 1;   /* full (cannot happen): never filter */
  }
  
@@ -19580,7 +19598,7 @@ index 5fc5020..cf1f5a8 100644
      }
  }
  
-@@ -2067,11 +2448,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
+@@ -2067,11 +2466,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
  void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
  {
      if (s_ovl_src_count < SPU_OVL_SRC_MAX) {
@@ -19595,7 +19613,7 @@ index 5fc5020..cf1f5a8 100644
      }
  }
  
-@@ -2083,13 +2466,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
+@@ -2083,13 +2484,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
   * keeps in its own data can be lifted. A body larger than one DMA arrives as
   * consecutive GETs (contiguous EA and LS); those are appended to the same
   * file. One file per source EA: ovl_<ea>.bin. */
@@ -19614,7 +19632,7 @@ index 5fc5020..cf1f5a8 100644
      static uint32_t s_seen[256]; static unsigned s_n;
      static SPU_TLS uint32_t t_src, t_next_ea, t_next_lsa;
      FILE* f = NULL; char path[512];
-@@ -2115,7 +2499,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
+@@ -2115,7 +2517,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
  void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint32_t size, const char* what)
  {
      static int64_t s_g = -2;
@@ -19625,7 +19643,7 @@ index 5fc5020..cf1f5a8 100644
      if (s_g < 0 || !vm_base) return;
      uint32_t g = (uint32_t)s_g;
      if (g < ea || g + 4 > ea + size) return;
-@@ -2148,6 +2534,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
+@@ -2148,6 +2552,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
          }
      }
      int nsrc = __atomic_load_n(&s_ovl_src_count, __ATOMIC_ACQUIRE);
@@ -21360,7 +21378,7 @@ index 8c4ccaa..eac2f00 100644
      /* Mark tag as completed -- EXCEPT a list parked at a stall-and-notify
       * element: its tag group stays incomplete until MFC_WrListStallAck resumes
 diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
-index f04fda6..56a5a05 100644
+index f04fda6..a25874c 100644
 --- a/runtime/spu/spu_helpers.h
 +++ b/runtime/spu/spu_helpers.h
 @@ -465,7 +465,10 @@ static inline u128 spu_selb(u128 a, u128 b, u128 c) { return spu_selb_ref(a, b,
@@ -21459,7 +21477,7 @@ index f04fda6..56a5a05 100644
  SPU__X8_INLINE u128 spu_fma(u128 a, u128 b, u128 c)  { return spu__x8_fma(a, b, c, 0, 0); }            /* a*b + c */
  SPU__X8_INLINE u128 spu_fms(u128 a, u128 b, u128 c)  { return spu__x8_fma(a, b, c, 0, 0x80000000u); }  /* a*b - c */
  SPU__X8_INLINE u128 spu_fnms(u128 a, u128 b, u128 c) { return spu__x8_fma(a, b, c, 0x80000000u, 0); }  /* c - a*b */
-@@ -2330,4 +2403,41 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
+@@ -2330,4 +2403,64 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
  static inline u128 spu_fsmb(u128 a) { return spu_fsmb_ref(a); }
  #endif
  
@@ -21475,6 +21493,14 @@ index f04fda6..56a5a05 100644
 + * a pending external stop, still goes through the real functions. Must stay
 + * after the generated spu_recomp.h, which declares them. */
 +#if defined(SPU_USE_DISPATCH_MT) && !defined(SPU_NO_CHANNEL_FAST)
++/* NOTES fix 113: with spu_wrch's fix 77 diagnostics off (g_spu_wrch_diag == 0; -1 = not looked up
++ * yet, so the first write goes through spu_wrch and looks them up), four more channels skip it too:
++ * the event mask is a field store, channel 69 is a no-op there, and a plain DMA command and the
++ * tag-update arm go straight to spu_wrch's own MFC paths (spu_channels.c). The atomic commands
++ * (GETLLAR, PUTLLC, PUTLLUC, PUTQLLUC) still go through spu_wrch. */
++extern int g_spu_wrch_diag;
++void spu_wrch_mfc_dma(spu_context* ctx, uint32_t cmd);
++void spu_wrch_mfc_tagupd(spu_context* ctx, uint32_t v);
 +static inline void spu_wrch_fast_(spu_context* ctx, uint32_t channel, u128 value)
 +{
 +    const uint32_t v = value._u32[0];
@@ -21485,8 +21511,23 @@ index f04fda6..56a5a05 100644
 +    case MFC_Size:      ctx->mfc_size = v; return;
 +    case MFC_TagID:     ctx->mfc_tag = v & 0x1F; return;
 +    case MFC_WrTagMask: ctx->mfc_tag_mask = v; return;
-+    default:            spu_wrch(ctx, channel, value); return;
++    default:            break;
 +    }
++    if (g_spu_wrch_diag == 0) {
++        switch (channel) {
++        case SPU_WrEventMask: ctx->event_mask = v; return;
++        case 69:              return;
++        case MFC_WrTagUpdate: spu_wrch_mfc_tagupd(ctx, v); return;
++        case MFC_Cmd:
++            if (v != MFC_GETLLAR_CMD && v != MFC_PUTLLC_CMD && v != MFC_PUTLLUC_CMD && v != MFC_PUTQLLUC_CMD) {
++                spu_wrch_mfc_dma(ctx, v);
++                return;
++            }
++            break;
++        default: break;
++        }
++    }
++    spu_wrch(ctx, channel, value);
 +}
 +static inline u128 spu_rdch_fast_(spu_context* ctx, uint32_t channel)
 +{
