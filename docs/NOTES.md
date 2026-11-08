@@ -2337,6 +2337,13 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked: the 2x run with the fix; the user's test at 2x ("way way way way better"; a flashing menu after
       quitting to it from a game is a separate, older bug, not this one); the patch section
       rebuilt from ps3recomp's blob + main's section and applied both ways (core.autocrlf=true / input).
+    - Follow-up (found by the 5800X session): the regenerated section lost the CR of one context line -- upstream
+      rsx_live_draw.c has 5 CRLF lines, one is line 7562 (`if (sampled < 0 && LD_DIAG_ENABLED("LD_ALIAS_DBG")) {`)
+      -- so the patch failed on an LF checkout (core.autocrlf=false: Linux, Steam Deck, macOS; "patch failed:
+      libs/video/rsx_live_draw.c:7559"); autocrlf=true and =input both normalise, which is why the checks missed
+      it. The CR is back on that one line. Check a regenerated section with all three settings in an LF worktree
+      (git -c core.autocrlf=false worktree add --detach <dir> HEAD in deps/ps3recomp, then git -c core.autocrlf=
+      false|true|input apply --check).
 105. **Even frame pacing on 144 / 165 / 75 Hz screens; G-Sync / FreeSync (2026-11-07; a YouTube review of the port
     named frame timing and pacing as its biggest issue; the user picked 72 fps for 144 Hz):**
     - Auto was 60 (50 on ~100 Hz). 60 does not divide 144 or 165 Hz: each frame stayed up 2 or 3 refreshes in turn
