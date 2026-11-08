@@ -2432,6 +2432,37 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       after the halt longjmp, which made every later atomic on that host thread light.
     - Next: a native pop for the queue protocol (and commands 7 / 8), on an A/B switch with a lifted-vs-native
       compare mode, once the GETLLAR dependency above is understood.
+112. **Latria 4-2 52.3 -> 58.5 fps on a 5800X: the SPU dispatcher's per-command chain runs as one native loop
+     (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - Fix 111's probe put the queue protocol at 60% of the dispatcher's time: per command a chain of ~15 small lifted
+      functions (4808 with the 3C90/3D18 bookkeeping, 4618 GETLLAR, 4694 compare / PUTLLC / entry GET, the cursor PUT
+      through C358/C438/C490/C408/C418, the jump table; commands 7 and 8, 83% of all, run 4958 / 49C0+4A08 and come
+      back to 4808), each hop a lifted call or tail call with the drain loop's bookkeeping around it.
+    - Fix (lifted-code.patch, spu_0001_at_0176C200): des_dispq_native, hooked at the top of func_00004808, is those
+      functions' own bodies copied statement for statement by a generator (scratch gen_dispq.py, kept out of the
+      repo); only the transfers changed: tail calls inside the chain are gotos (pc set as SPU_DIRECT sets it), the two
+      host calls (3C90 at 0x4818, C358 at 0x4734) jump to their callee and return to a label that restores the image id
+      as spu_img_restore does, SPU_RET inside them sets pc = r0. Every channel / MFC operation is still spu_wrch /
+      spu_rdch (fix 111's spu_wrch_light included), so reservations, events and DMA behave as before.
+    - It hands back exactly where the lifted code transfers: at 4808 every 256 commands (the drain loop gets its step)
+      and whenever 3C90 would leave its inlined call (3D68: LS[0x13384] <= LS[0x13388], no free job slot; 4130: command
+      35 = 0x9023's done words) -- both tested from local store before any side effect; at 5120 after 64 empty polls;
+      at every handler other than 7 and 8 (the indirect branch, as before). Commands 7 / 8 are entered directly only
+      when the indirect branch would be a plain lookup (no policy module, resident task / overlay / module image, the
+      lookup returns this image's handler). It runs only while the tail-call path would be taken anyway: direct
+      transfers on, a step counted, interrupts off, lockstep off, no stack-reset hint on its 15 entries; gcc / MSVC
+      builds (no musttail) never take it. DES_DISPQ_NATIVE=0 = the lifted chain.
+    - A/B at Latria 4-2 (same exe, off / on, alternating, 3 each): 52.4 / 52.1 / 52.3 -> 58.3 / 58.6 / 58.5 fps, p99
+      25.5-27.0 -> 23.7-23.9 ms, frames over 25 ms 38 / 47 / 59 -> 14 / 10 / 8 (this batch ran with the vblank thread
+      spinning, NOTES fix 111 / Windows 26300, in both modes); the first build, another batch: 54.8 / 57.0 -> 58.3 / 59.4
+      / 59.8, HighGraphics ~77% -> 59%. Tour (Shrine 3-1 x2, Latria 4-1 / 4-2, Boletaria 1-1, Valley 5-1, the Nexus;
+      turns + a walk): every stop 59.0-60, no aborts, halts or [dispq] lines either way.
+    - Review (2 agents: equivalence with the lifted chain; liveness + builds): no semantic defect; bounded loops, no
+      recursion (hand-offs only set the trampoline), stop requests still reach it (every pass reads channels). Changed
+      from it: the direct entry to 7 / 8 needs the plain-lookup test; the inlined calls leave pc as the host call did;
+      no pc write on entry. Accepted: the steps counter advances differently (only zero / non-zero is used).
+    - Next: the channel operations themselves (spu_wrch / spu_rdch per LSA / EAL / size / tag write) as direct field
+      writes, one at a time with A/B; then the cmd 33 / 34 handlers (11% / 3% of the dispatcher).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
