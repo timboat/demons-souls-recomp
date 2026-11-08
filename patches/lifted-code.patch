@@ -1566,7 +1566,7 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -32551,8 +32553,127 @@
+@@ -32551,8 +32553,129 @@
          return;
  }
  
@@ -1688,13 +1688,15 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
 +    }
 +}
 +
++extern "C" void br_mark(int kind);   /* boss rush: the run timer pauses during cutscenes (fix 100) */
  void func_005F71D0(ppu_context* ctx) {
      PPU_MM_SNAP
++    br_mark(2);   /* the remo camera sampler: every frame of an in-engine cutscene */
 +        int des_cut = 0;   /* PORT PATCH (fix 80) */
          uint64_t _cs_28 = ctx->gpr[28];
          uint64_t _cs_29 = ctx->gpr[29];
          uint64_t _cs_30 = ctx->gpr[30];
-@@ -32594,6 +32715,7 @@
+@@ -32594,6 +32717,7 @@
          ctx->fpr[0] = ppu_fp_single(ppu_fsub(ctx->fpr[0], ctx->fpr[12]));
          ctx->fpr[10] = ppu_fp_single(ppu_fdiv(ctx->fpr[0], ctx->fpr[11]));
  loc_005F7254:
@@ -1702,7 +1704,7 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
          ctx->gpr[9] = vm_read32(ctx->gpr[30] + -0x7F6C);
          { int64_t a = (int32_t)ctx->gpr[6]; int64_t b = (int64_t)0; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
          { uint64_t ea = (ctx->gpr[9]) & ~0xFULL; vm_raw_ld16(&ctx->vr[2], ea); }
-@@ -32635,6 +32757,7 @@
+@@ -32635,6 +32759,7 @@
  loc_005F72E8:
          ctx->gpr[9] = ppc_rldicl(ctx->gpr[9], 0, 32);
          { uint64_t ea = (ctx->gpr[9]) & ~0xFULL; vm_raw_ld16(&ctx->vr[4], ea); }
@@ -1710,7 +1712,7 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
  loc_005F72F0:
          { int64_t a = (int32_t)ctx->gpr[29]; int64_t b = (int64_t)0; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
          { uint64_t* d = (uint64_t*)&ctx->vr[3]; uint64_t* a = (uint64_t*)&ctx->vr[2]; uint64_t* b = (uint64_t*)&ctx->vr[2]; d[0] = a[0] | b[0]; d[1] = a[1] | b[1]; }
-@@ -32680,6 +32803,7 @@
+@@ -32680,6 +32805,7 @@
          ctx->gpr[10] = vm_read32(ctx->gpr[30] + -0x7EC8);
          vmx_vslw(&ctx->vr[1], &ctx->vr[1], &ctx->vr[1]);
          { uint64_t ea = (ctx->gpr[9]) & ~0xFULL; vm_raw_ld16(&ctx->vr[12], ea); }
@@ -1718,7 +1720,7 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
          { uint64_t ea = (ctx->gpr[11]) & ~0xFULL; vm_raw_ld16(&ctx->vr[0], ea); }
          { uint64_t ea = (ctx->gpr[10]) & ~0xFULL; vm_raw_ld16(&ctx->vr[13], ea); }
          vmx_vmaddfp(&ctx->vr[0], &ctx->vr[12], &ctx->vr[1], &ctx->vr[0], ctx->vscr);
-@@ -32725,6 +32849,7 @@
+@@ -32725,6 +32851,7 @@
  loc_005F7438:
          ctx->gpr[9] = ppc_rldicl(ctx->gpr[9], 0, 32);
          { uint64_t ea = (ctx->gpr[9]) & ~0xFULL; vm_raw_ld16(&ctx->vr[2], ea); }
@@ -1968,16 +1970,18 @@ diff -ruN a/recompiled/ppu_recomp_049.cpp b/recompiled/ppu_recomp_049.cpp
          uint64_t _cs_15 = ctx->gpr[15];
          uint64_t _cs_16 = ctx->gpr[16];
          uint64_t _cs_17 = ctx->gpr[17];
-@@ -47751,8 +47755,12 @@
+@@ -47751,8 +47755,14 @@
          { g_trampoline_fn = (void(*)(void*))func_007D9958; return; }
  }
  
 +/* PORT PATCH (NOTES fix 96): DsMenuDlgTitle_vf03 runs on every frame of the title screen (PRESS START) and on
 + * none before it, so its first call ends DES_SKIP_INTRO's fast-forward (ppu_recomp_011.cpp). */
 +extern "C" volatile int g_des_title_shown;
++extern "C" void br_mark(int kind);   /* boss rush: the run timer pauses on the title screen (fix 100) */
  void func_007D9958(ppu_context* ctx) {
      PPU_MM_SNAP
 +    g_des_title_shown = 1;
++    br_mark(3);
          return;
          /* nop */;
          { g_trampoline_fn = (void(*)(void*))func_007D9960; return; }

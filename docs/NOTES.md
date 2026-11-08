@@ -2294,6 +2294,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       - The timer events go out as print("BRX ...").
       - "BRX ingame" (1 s after every map load): the timer is hidden until the first one, so not on the title
         screen or character creation.
+      - The run timer pauses (asked for: "the timer should pause for loading screens AND for cutscenes"): a pause
+        moves the timer's start point forward, so splits and saves are unchanged. Loading: "BRX loading" at the start
+        of every map load (BR_MapLoad) and before each of the module's own WarpNextStage calls, until "BRX ingame",
+        which gives back its 1 s of play. (DsMenuDlgNowLoading_vf03, the loading dialog's match of the title's
+        per-frame vf03, is never called: measured.) Cutscenes: br_mark(2) in the remo camera sampler func_005F71D0
+        (fix 80; every frame of an in-engine cutscene). The title screen: br_mark(3) in DsMenuDlgTitle_vf03 (fix 96).
+        A step within 60 ms of a mark is still paused; before the first "BRX ingame" of a session nothing counts.
+        Each pause is logged ("[bossrush] timer paused 3.1 s (loading screen)"). Checked (scratch sandbox, a copy
+        of the rush save, scripted load + DES_WARP_AT): title 16.1 s, not in the game yet 6.0 + 8.9 s, two loading
+        screens 3.1 s each left out; 88 s counted in a 130 s session.
     - make_boss_rush.py also: moves each boss map's archstone warp point (MSB player part) onto its fog region,
       0.5 m up, facing the fog -- landing at the archstone point started the fight (it is in the arena), and a
       teleport after the load made the area stream in at once (texture flashing) and dropped the player through

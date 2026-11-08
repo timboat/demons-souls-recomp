@@ -97,6 +97,7 @@ end
 
 -- At the end of g_Initialize, before the map's own Initialize: flag changes here decide how the map loads.
 function BR_MapLoad(proxy)
+	print("BRX loading");   -- the run timer pauses until "BRX ingame" (the map is loading)
 	BR_Traders(proxy);
 	BR_NexusStory(proxy);
 	local pend = BR_GetPending(proxy);
@@ -168,6 +169,7 @@ function BR_Hook(proxy, param)
 		-- a save continued in the middle of this boss (a quit or a crash): back to its fog, like a death
 		print("BR:continued in the middle of " .. cb.n .. " -> back to its fog");
 		BR_SetPending( proxy, ci );
+		print("BRX loading");
 		proxy:WarpNextStage( cb.a, cb.b, 0, 0, cb.pt );
 		return;
 	end
@@ -242,10 +244,12 @@ function BR_Go(proxy, param)
 	if BR_LEAVE_NEXUS or b.nx == 0 then
 		BR_SetCurrent( proxy, 0 );
 		proxy:SetEventFlag( 8083, true );
+		print("BRX loading");
 		proxy:WarpNextStage( 1, 0, 0, 0, BR_NEXUS_PT[b.wd] );
 	else
 		local n = BR_B[b.nx];
 		BR_SetPending( proxy, b.nx );
+		print("BRX loading");
 		proxy:WarpNextStage( n.a, n.b, 0, 0, n.pt );
 	end
 end
@@ -265,6 +269,7 @@ function SoloPlayDeath_2(proxy, param)
 	proxy:SetFlagInitState(1);
 	if not dead then BR_SetPending( proxy, cur ); end
 	proxy:SetEventFlag( 16700, false );
+	print("BRX loading");
 	proxy:WarpNextStage( b.a, b.b, 0, 0, b.pt );
 	proxy:PlayAnimation( 10000, 6100 );
 	proxy:SetEventFlag( 4000, false );
@@ -309,6 +314,7 @@ function BR_NexusGo(proxy, param)
 		SetNpcStateFlag( proxy, param, warp_list, npc );   -- what the game's own archstone does for the NPCs
 	end
 	BR_SetPending( proxy, BR_NEXUS_PICK );
+	print("BRX loading");
 	proxy:WarpNextStage( b.a, b.b, 0, 0, b.pt );
 end
 
@@ -365,6 +371,7 @@ function BR_SkipTutorial(proxy)
 	proxy:Tutorial_end();
 	proxy:ChangeGreyGhost();
 	proxy:RequestFullRecover();
+	print("BRX loading");
 	proxy:WarpNextStage( 1, 0, 0, 0, -1 );
 end
 

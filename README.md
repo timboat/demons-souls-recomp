@@ -173,9 +173,9 @@ sells every weapon and shield, every armour piece and ring, every upgrade materi
 - **Dying:** you go back to the same boss's fog in body form.
 - **The Nexial Binding** takes you back to the Nexus and keeps your souls.
 - **The run** ends when King Allant dies; his fight and the ending are the game's own.
-- **The timer** at the bottom of the screen appears once you are in the game. It starts at the first fog and never
-  pauses, except while the game is closed. Splits and the final time go to `bossrush\splits.txt` and
-  `bossrush\results.txt`.
+- **The timer** at the bottom of the screen appears once you are in the game. It starts at the first fog and pauses
+  on loading screens, cutscenes and the title screen (and while the game is closed). Splits and the final time go to
+  `bossrush\splits.txt` and `bossrush\results.txt`.
 - **Boss rush souls** in the launcher (`DES_BR_SOULS=2`, 3, 5 or 10): every enemy and boss gives that many times its
   souls. The timer shows *Souls x2* and so on when it is not 1x, so runs and videos say which they used.
 

@@ -98,6 +98,38 @@ const std::string& dir()
     return g_dir;
 }
 
+/* Pauses (loading screens, cutscenes, the title screen, before the first time in the game): br_mark() and the
+ * step hook tick; paused time moves g_t0 forward, so it never reaches the run time. */
+unsigned long long g_tick = 0;          /* qpc of the previous tick */
+unsigned long long g_mark_us = 0;       /* qpc of the last br_mark */
+int g_mark_kind = 0;                    /* its kind (2 cutscene, 3 title) */
+bool g_loading = false;                 /* "BRX loading" until "BRX ingame": a map is loading */
+int g_pause_kind = -1;                  /* the pause going on (0 none, 4 not in the game yet), for the log */
+unsigned long long g_pause_from = 0, g_pause_run = 0;
+bool g_visible = false;   // set by the first "BRX ingame" (1 s after a map load): hidden on the title and creation
+const char* pause_name(int k)
+{
+    return k == 1 ? "loading screen" : k == 2 ? "cutscene" : k == 3 ? "title screen" : "not in the game yet";
+}
+void tick(unsigned long long now, int pause)   /* pause: 0 = counts, else the reason */
+{
+    if (g_tick && now > g_tick && g_running && pause) g_t0 += now - g_tick;
+    g_tick = now;
+    if (pause != g_pause_kind) {
+        if (g_pause_kind > 0 && g_running)
+            fprintf(stderr, "[bossrush] timer paused %.1f s (%s)%s", (double)(now - g_pause_from) / 1e6,
+                    pause_name(g_pause_kind), "\n");
+        g_pause_kind = pause;
+        g_pause_from = now;
+    }
+}
+int pause_now(unsigned long long now)
+{
+    if (g_mark_us && now - g_mark_us < 60000ull) return g_mark_kind;
+    if (g_loading) return 1;
+    return g_visible ? 0 : 4;
+}
+
 unsigned long long now_run_us()
 {
     return g_running ? g_base_us + (ps3_qpc_us() - g_t0) : g_base_us;
@@ -141,7 +173,7 @@ void load_state()
         else if (sscanf(line, "split %llu %llu %n", &a, &b, &n) == 2) g_splits.push_back({ line + n, a, b });
     }
     fclose(f);
-    g_t0 = ps3_qpc_us();
+    g_t0 = g_tick = ps3_qpc_us();
     fprintf(stderr, "[bossrush] resumed: %s, %d splits%s\n", fmt(g_base_us).c_str(), (int)g_splits.size(),
             g_running ? " (running)" : "");
 }
@@ -302,8 +334,6 @@ void show_image(const std::vector<Part>& l0, const std::vector<Part>& l1)
     ps3_overlay_image(px.data(), W, H, 0.5f, 0.975f, H * (37.0f / cell) / 720.0f);
 }
 
-bool g_visible = false;   // set by the first "BRX ingame" (1 s after a map load): hidden on the title and creation
-
 void show()
 {
     if (!g_visible) return;   // nothing drawn yet: the overlay starts empty
@@ -353,7 +383,23 @@ extern "C" void br_lua_line(const char* line)
     if (!on() || !line) return;
     Lock lk;
     ensure_loaded();
+    if (!strcmp(line, "loading")) {
+        const unsigned long long t = ps3_qpc_us();
+        tick(t, pause_now(t));
+        g_loading = true;
+        tick(t, pause_now(t));
+        return;
+    }
     if (!strcmp(line, "ingame")) {
+        /* 1 s of play after the load: a loading (or not-in-the-game-yet) pause ends, and that second counts */
+        const unsigned long long t = ps3_qpc_us();
+        tick(t, pause_now(t));
+        if ((g_pause_kind == 1 || g_pause_kind == 4) && g_running) {
+            const unsigned long long back = t - g_pause_from < 1000000ull ? t - g_pause_from : 1000000ull;
+            g_t0 -= back;
+            g_pause_from += back;   /* the logged pause ends where play began */
+        }
+        g_loading = false;
         if (!g_visible) fprintf(stderr, "[bossrush] in game: timer shown\n");
         g_visible = true;
         show();
@@ -363,7 +409,7 @@ extern "C" void br_lua_line(const char* line)
         fprintf(stderr, "[bossrush] reset\n");
     } else if (!strcmp(line, "start")) {
         if (!g_running && !g_done) {
-            g_running = true; g_base_us = 0; g_t0 = ps3_qpc_us(); g_seg_start = 0; g_splits.clear();
+            g_running = true; g_base_us = 0; g_t0 = g_tick = ps3_qpc_us(); g_seg_start = 0; g_splits.clear();
             fprintf(stderr, "[bossrush] timer started\n");
         }
     } else if (!strncmp(line, "boss ", 5)) {
@@ -401,6 +447,7 @@ extern "C" void br_step(void)
     Lock lk;
     ensure_loaded();
     const unsigned long long t = ps3_qpc_us();
+    tick(t, pause_now(t));
     static unsigned long long last_show;
     if (t - last_show >= 50000ull) { last_show = t; show(); }
     if (g_running && t - g_last_save >= 5000000ull) { g_last_save = t; save_state(); }
@@ -419,6 +466,18 @@ extern "C" void br_souls_done(int n)
 {
     Lock lk;
     g_souls_pending -= n;
+}
+
+/* Every frame of a loading screen (1), a cutscene (2) or the title screen (3), from the lifted code: the run
+ * timer leaves that time out. */
+extern "C" void br_mark(int kind)
+{
+    if (!on()) return;
+    Lock lk;
+    const unsigned long long t = ps3_qpc_us();
+    g_mark_us = t;
+    g_mark_kind = kind;
+    tick(t, kind);
 }
 
 /* DES_BOSS_RUSH is on: the lifted character start (ppu_recomp_018.cpp, func_00185158) sends a new character
