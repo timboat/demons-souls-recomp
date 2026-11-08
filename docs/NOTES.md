@@ -3110,6 +3110,30 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       ps3recomp-local.patch applies to a clean 4e8f3ca8 checkout and gives the tested files exactly (one context
       line keeps its CR: generate sections with git diff, not through sed, which drops it).
     - The Mac's Metal renderer has no internal resolution setting (DES_RES_SCALE is D3D12 only): unchanged.
+130. **lifted-code.patch applies again outside Windows: CRs removed (2026-11-08, MacBook M2 Pro):**
+    - Measured: on main (a730e6f) `mac/rebuild.sh toolkit lift build` stopped at step 5, "patches/lifted-code.patch
+      did not apply", with 9 of its files failing (ppu_recomp_011, 023, 033, 045, 052, 064, 073, 084, 126), also on a
+      fresh relift.
+    - Cause: those sections carried CRLF lines (780 CRLF plus one stray `+\r\r\n`; v2026.11.08's patch had none). Step 5
+      of the setup turns every recompiled file into LF, and git apply on a non-Windows host compares bytes, so the
+      context cannot match. Same family as 6a85700 (the runtime patch), but on the lifted-code side. Not tested on
+      Linux; it runs the same step.
+    - Fix: the 781 CRs are out of the patch; every other byte is unchanged. The files it targets are always LF, so the
+      added lines are LF everywhere.
+    - Checked: the result is byte-identical to a copy that `git apply --check` passed against a freshly lifted
+      port/, and `mac/rebuild.sh` then runs clean through lift and build. Windows not run; its recompiled files are
+      LF as well, and v2026.11.08's all-LF patch applied there.
+131. **macOS links again: non-Windows stand-in for ps3_host_mouse_look_pending (2026-11-08, MacBook M2 Pro):**
+    - Measured: linking DemonsSoulsRecomp failed on arm64, `_ps3_host_mouse_look_pending` undefined, referenced from
+      func_00119670 (ppu_recomp_016.cpp).
+    - Cause: fix 110 added the function in cellPad.c's Win32 keyboard block and calls it from lifted code on every
+      host. Its siblings have stand-ins in the `#ifndef _WIN32` block; this one had none.
+    - Fix: `int ps3_host_mouse_look_pending(void) { return 0; }` in that block, next to ps3_host_mouse_look_take, which
+      also answers "no mouse look" there. Windows does not compile that block.
+    - Checked: only the cellPad.c section of ps3recomp-local.patch was regenerated, and it differs from the old one by that
+      line (plus its index and hunk line numbers). The whole patch passes `git apply --check` under core.autocrlf
+      false, true and input on a clean worktree. Built with plain `mac/rebuild.sh`; a 70 s sandbox boot with no input played the
+      title's opening movie with no crash. Mac keyboard and mouse look still go through the host_window path, untouched here.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
