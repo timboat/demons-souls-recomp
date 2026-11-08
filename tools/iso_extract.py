@@ -76,10 +76,13 @@ def probe(path):
     if '/PS3_GAME/USRDIR/EBOOT.BIN' not in files:
         sys.exit(f'{path}: no PS3_GAME/USRDIR/EBOOT.BIN -- not a PS3 game disc image?')
     lba = files['/PS3_GAME/USRDIR/EBOOT.BIN'][0]
-    pos = HEAD
-    while pos < lba:
-        step = min(lba - pos, 8192); f.read(step * SECT); pos += step
-    first = f.read(SECT)
+    if lba < HEAD:   # an image rebuilt from a folder dump: the file is in the part already read
+        first = meta[lba * SECT:(lba + 1) * SECT]
+    else:
+        pos = HEAD
+        while pos < lba:
+            step = min(lba - pos, 8192); f.read(step * SECT); pos += step
+        first = f.read(SECT)
     if first[:4] == b'SCE\0':
         return False, lambda key: True
     return True, lambda key: dec_sector(key, first, lba)[:4] == b'SCE\0'
@@ -98,19 +101,20 @@ def extract(path, out_dir, wanted, key=None):
     pos = HEAD
     for lba, size, name in targets:
         out = os.path.join(out_dir, name.lstrip('/')); os.makedirs(os.path.dirname(out), exist_ok=True)
-        if lba + (size + SECT - 1) // SECT <= HEAD:   # already in the metadata buffer
-            open(out, 'wb').write(meta[lba * SECT:lba * SECT + size]); continue
-        # the stream is sequential (a zip member can't seek): skip forward
-        while pos < lba:
-            step = min(lba - pos, 8192); f.read(step * SECT); pos += step
         nsec = (size + SECT - 1) // SECT
         with open(out, 'wb') as o:
             left = size
             for k in range(nsec):
-                s = f.read(SECT); l = lba + k
+                l = lba + k
+                if l < HEAD:   # a file that starts in the metadata part (an image rebuilt from a folder dump)
+                    s = meta[l * SECT:(l + 1) * SECT]
+                else:
+                    # the stream is sequential (a zip member can't seek): skip forward
+                    while pos < l:
+                        step = min(l - pos, 8192); f.read(step * SECT); pos += step
+                    s = f.read(SECT); pos += 1
                 if not is_plain(l): s = dec_sector(key, s, l)
                 o.write(s[:min(SECT, left)]); left -= SECT
-        pos = lba + nsec
         done += 1
         if len(targets) < 20 or done % 500 == 0 or done == len(targets):
             print(f'  [{done}/{len(targets)}] {name}', flush=True)
