@@ -2558,6 +2558,33 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Review (2 agents + critic): no output change, race or build break; every writer of the sampler keys, ring tables,
       texture keys and descriptor heaps checked. Noted: with LD_MEMO_CHECK=1 the texture memo's check counter moves
       at a different rate (more memo hits).
+117. **Render thread -1 ms/frame: the FIFO walker hands the live renderer whole runs of method words (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - With the live renderer on, every FIFO data word took the walker's per-word loop (cellGcmSys.c): about a dozen
+      env-gated diagnostic tests, gcm_io2ea, rsx_live_draw_method (its trace / serialisation / readiness / movie-mode
+      checks, an ld_occ_method call, rsx_dispatch_method) and gcm_3d_method -- at Boletaria 1-1 ~150k words a frame,
+      the walker plus method dispatch ~18% of the render thread's samples.
+    - Fix (libs/video/cellGcmSys.c, rsx_dispatch.c/.h, rsx_live_draw.c):
+      - rsx_dispatch_method_run: a header's words in one call. A method rsx_dispatch_method would only store (seen /
+        regs) is stored directly, the transform-program and -constant upload windows run their own statements (the
+        constant window only with RSX_CONST_LOG off); everything else is rsx_dispatch_method and the run returns
+        after it (a sink, an immediate-mode fold or vertex may follow). Movie mode and readiness are re-checked
+        before every word.
+      - ld_method_run (registered as g_gcm_live_method_run at renderer init; LD_METHOD_RUN=0 = not registered)
+        sends a word through rsx_live_draw_method whenever one of its other paths could apply (vertex-state trace,
+        movie composite / debug layer, not ready, movie mode, an occlusion method), else through the run. The
+        occlusion filter is tested inline before ld_occ_method is called.
+      - The walker uses it when the live renderer is the only reason for the per-word loop (no GCM_* /
+        RSX_LIVE_FEED_DBG diagnostic, no draw-engine mirror, no legacy state; subchannel 0, or 1 without
+        GCM_SUBCH1_2D; one 1 MB IO page): runs of words gcm_3d_method does nothing for go to the run; the other words
+        (SET_REFERENCE, report DMA / GET_REPORT, notify / semaphore / label methods) go word by word through
+        rsx_live_draw_method then gcm_3d_method as before.
+    - A/B on one exe (LD_METHOD_RUN=0 / on, alternating, 3 each): Boletaria 1-1 arrival render CPU 11.7 / 11.5 / 11.4 ->
+      11.0 / 10.4 / 10.3 ms/frame, walking jitter (warm) 0.99 / 0.91 -> 0.78 / 0.85 ms; Latria 4-2 uncapped render
+      CPU 10.3 / 10.4 / 10.2 -> 9.3 / 9.4 / 9.5 ms/frame at the same fps (64.5 -> 64.8: Latria is bound by the SPU
+      dispatcher, not the render thread). Tour: every stop 59.2-60 mean, no aborts or halts.
+    - Review (2 agents + critic): no output change, race or build break. Noted: like the existing non-live fast
+      path, the run reads FIFO words from guest memory directly, so a PPU read-watch on FIFO addresses
+      (vm_read32's hooks) no longer sees them.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
