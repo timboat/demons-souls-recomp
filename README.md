@@ -85,8 +85,9 @@ checkout** instead: install Python 3.10+, git, and clang + lld 17 or newer, then
 
 ### macOS (Apple silicon)
 
-**Experimental:** a native arm64 build on Metal (by erikomis), played through the start of the Tutorial so
-far. You need about **14 GB** free.
+A native arm64 build on Metal (by erikomis). **It is playable, but very behind on updates:** most of the
+Windows and Linux features are missing. The Mac version will be worked on once Windows and Linux are finished.
+You need about **14 GB** free.
 
 1. Install Apple's command-line tools (`xcode-select --install`), then with [Homebrew](https://brew.sh):
    `brew install cmake ninja sdl2 glslang spirv-cross ffmpeg python@3.12` (FFmpeg is for the movies).
