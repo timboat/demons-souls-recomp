@@ -2357,6 +2357,34 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       file) and the launcher's hint; tearing on (this PC supports it) at 60 fps vsync off, with a window resize
       (LD_TEST_CLIENT): no Present / ResizeBuffers failure, 60.0 fps. Not checked here: a 144 / 165 Hz or VRR
       screen (the user's is 100 Hz, where Auto stays 50).
+110. **Choppy mouse pans: the camera undid mouse turns a few frames after they were made (2026-11-05, 5800X + RTX 3070,
+    60 Hz; user: "spin the camera and it's super choppy"):**
+    - The user's recordings (perf6-11-05_*, keyboard + mouse) looked clean: while turning, 99% of frames were up one
+      refresh (p99 17.7 ms), steps 16.0-17.3 ms apart, mouse counts per step steady. The problem was what the frames
+      showed. LD_VIDEO capture (any ffmpeg: LD_VIDEO_ENC="-vf scale=480:270 -f rawvideo -pix_fmt gray"), frame-to-frame
+      mean absolute difference with the HUD masked, a constant-speed pan at the Palace start: stick (rx=200) even,
+      1.8% repeated frames, 95% of frames within 1.6x of their neighbours; scripted mouse (PAD_TEST_MOUSE 12 counts a
+      poll) 10.7% repeated, 12.7% over 1.6x, a 29-frame cycle. (Image-shift tracking does not work for this camera:
+      it orbits the player, so near and far parts of the picture move at different speeds.)
+    - Why (DES_MLOOK_LOG=2 per frame, a log at every yaw store, a write watch on cam+0x134, and a per-frame log of
+      the labels func_00119670 passed through, stick vs mouse): mouse look adds the counts to the camera's angles at
+      loc_0011C7D8 (fix 78), but the camera's own input test at loc_0011C904 (reached from loc_00119B9C in the free
+      camera) asks whether the right stick is pushed. Pushed (loc_0011CCD8): hand control, the follow timer
+      cam+0x148 restarts. Not pushed: the timer runs down, then (loc_0011D734 -> loc_0011C758) the camera follows on
+      its own -- its body trails the player and slides along walls, and loc_0011C96C sets the yaw to atan2(player -
+      camera body) (func_00113270). With the mouse the stick is never pushed, so every turn was pulled back to where
+      the camera body was: +0.0144 rad a frame for 20 frames, then -0.31 rad in 8, over and over. The stick at the
+      same speed: 0.0120 a frame through full turns, loc_0011C96C never moved it.
+    - Fix (ppu_recomp_016.cpp, lifted-code.patch; cellPad.c ps3_host_mouse_look_pending): the loc_0011C904 test also
+      takes the stick-pushed branch when mouse-look counts are waiting this frame, or were taken in the last 6 frames
+      (~100 ms, gaps between mouse reports). When the mouse stops, the camera goes back to following like it does
+      when the stick is let go. PAD_MOUSE_LOOK=0 is unchanged (pending is 0).
+    - Merged on main after fix 111 (2026-11-07): same scripted mouse pan on that build: 2 repeated frames of 1800,
+      95th percentile 1.07x, 60.0 fps; the walk with mouse turns: no aborts.
+    - Result, same scripted mouse pan: yaw +0.0144 every frame through full turns (3 off = the +-pi wrap); video
+      repeated frames 193 -> 1 of 1800, frames over 1.6x 228 -> 70, 95th percentile 1.86x -> 1.08x (the stick:
+      1.63x); 59.9 fps. Walking with mouse turns and PAD_MOUSE_LOOK=0 runs: no aborts. BUILD from the fix 90 state
+      reports both patches current and makes the exe that was measured.
 111. **Latria 4-2 53.5 -> 55.7 fps on a 5800X: the SPU dispatcher's no-op PUTLLC skips the lock-line lock
      (2026-11-07, 5800X + RTX 3070, 60 Hz):**
     - Baseline on main 5a72f0d (this PC): the Palace heavy spot (fixes 75/77) is at the 60 cap now (59.7 / 59.4,
