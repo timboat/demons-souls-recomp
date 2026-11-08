@@ -2488,6 +2488,76 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       divergence. Noted: with SPU_LOCK_SITES the lock-line acquisitions of plain PUTs are attributed to
       spu_wrch_mfc_dma instead of spu_wrch (counts unchanged); the externs are C-linkage only for C (no C++ unit
       defines SPU_USE_DISPATCH_MT).
+114. **The SPU dispatcher's GETLLAR / PUTLLC skip spu_wrch, and commits skip wake-up scans that cannot match (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - After fix 113 the dispatcher's reservation protocol is the next block (uncapped Latria, its RIP profile):
+      spu_wrch 15% -- by now almost only the GETLLAR and light-PUTLLC bodies of spu_mfc_atomic, each behind
+      spu_wrch's full prologue and the four-way command classification -- plus spu_coh_reserve_fast 3.7%,
+      spu_taskset_line_committed 1.6%, spurs_commit_hook 1.3% and spu_taskset_is_down 1.0%. Per command: two
+      spu_wrch prologues, two taskset-down calls, and after the PUTLLC two scans (parked taskset tasks; event
+      flags and SPURS instances) that can never match the queue line 0x01B51080.
+    - Fix (runtime/spu/spu_channels.c, spu_helpers.h, spu_workload.c, spu_coherency.h; libs/spurs/cellSpurs.c):
+      - spu_mfc_atomic's body after its classification is spu_mfc_atomic_line (one always_inline function, so its
+        function-local statics stay single objects); with spu_wrch's diagnostics off (g_spu_wrch_diag == 0) the
+        lifted fast path sends GETLLAR / PUTLLC to spu_wrch_mfc_getllar / spu_wrch_mfc_putllc and spu_wrch_light
+        takes the same shortcut for its PUTLLC -- the same statements as spu_wrch -> spu_mfc_atomic for those
+        commands, including fix 111's flag (taken and cleared before the body). PUTLLUC / PUTQLLUC still go
+        through spu_wrch.
+      - A commit-interest filter: one bit per line index mod 2^15 (g_spu_commit_interest, set-only). Every writer
+        of a key a post-commit scan matches marks that line first -- spu_taskset_parked_add (the taskset's
+        signalled line), cellSpurs ef_sync_alloc (the event flag) and spurs_initialize_common (the SPURS
+        instance) -- with a release fence before the key store. A commit whose line bit is clear skips
+        spu_taskset_line_committed and g_spu_line_commit_hook: their scans could not have matched. Any new hook
+        or key writer must mark its lines the same way.
+      - spu_taskset_is_down's memo hit is tested inline in the atomic body (the same reads in the same order;
+        the scan stays out of line with the generation already loaded).
+      - Not done: a cheaper GETLLAR fence -- this clang already emits a locked stack OR, not MFENCE.
+    - A/B at Latria 4-2 uncapped (fix 113 vs this, alternating, 3 each): 63.0 / 63.6 / 65.5 -> 64.1 / 64.7 / 65.2 fps
+      (a noisy batch: the vblank thread's spin, fix 111, came and went). Fixes 113 vs 114-116 together, 3 each:
+      65.0 / 65.2 / 65.1 -> 65.6 / 65.7 / 65.9 fps, render CPU 10.7 -> 10.2 ms/frame.
+    - Review (3 agents + a completeness critic: equivalence of the entries and the memo; every key writer and
+      hook installer for the filter, x86 / aarch64 ordering; builds and POSIX fixtures): no divergence, race or
+      build break. Noted: with SPU_LOCK_SITES the GETLLAR / PUTLLC lock sites are attributed to the new entries
+      (counts unchanged); ef_sync_free's transient (initialized, ea = 0) state no longer gets a wake for guest
+      line 0 (unreachable; it was a wake on a critical section being deleted).
+115. **Boletaria 1-1 render CPU 12.1 -> 11.8 ms/frame on a 5800X: per-draw pipeline lookup without scans or repeat
+     decodes (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - Boletaria 1-1's start (warp 2,0,999; ~1000-1200 draws) is limited by the render thread, not the PPU / SPU side:
+      frames whose render CPU passes 16.7 ms miss the vblank (avg 12.4 ms, slow frames 15-21 ms). Its stack samples
+      there: sink_end_impl 52% inclusive, get_pso 7.8%, fetch_batches_hoisted 11.4%, texture_srv_slot 5.0%.
+    - Fix (libs/video/rsx_live_draw.c, the D3D12 renderer's per-draw path; presentation untouched):
+      - get_pso found a pipeline by scanning g.psos front to back (nothing is ever removed, so the scan grows over a
+        session). A hashed index (g.pso_index, linear probing at load <= 0.5) returns the same slot: keys are unique
+        (an entry is appended only after its lookup missed) and slots never move. LD_PSO_INDEX=0 = the scan.
+      - get_pso decoded the 16 texture units up to three times (cube mask, shadow compare, UNNORM sizes); once now.
+      - get_pso's vertex-program memo (fix 48) is shared with ld_current_vertex_layout, which re-ran the input
+        analysis and the size walk on every draw, and memoises the branch-bit scan too (same values; keyed on the
+        start slot and rsx_dispatch_vp_generation; reset at renderer init / shutdown, whose memsets of vp[] do not
+        bump the generation).
+    - A/B at the 1-1 arrival (fix 114 vs this, alternating, 3 each, 150-170 s): render CPU 12.0 / 12.1 / 12.1 ->
+      11.9 / 11.7 / 11.8 ms/frame; walking (170-200 s, warm caches) frame-time jitter 1.17 / 1.05 -> 0.90 / 0.88 ms.
+    - Review (2 agents + critic): no output change, race or build break. Noted: under YZ_PERF_PROFILE pso_probes counts
+      index probes instead of scan steps.
+116. **Texture and sampler binding without scans or per-call heap queries (2026-11-08, 5800X + RTX 3070, 60 Hz):**
+    - More per-draw work in the texture / sampler binding (libs/video/rsx_live_draw.c), all with identical results:
+      - sampler_slot / sampler_slot_tp scanned every sampler key and sampler_table compared the draw's 16 sampler slots
+        with every table in the ring (up to 128 memcmps). Verified hints go first: keys and ring tables are unique in
+        their live range, so a hint that still holds the same key / slots is exactly the scan's answer.
+      - texture_srv_slot's lookup memo (fix 55) indexed on the low bits of a product of the offset, so height and
+        location fell out and textures at aligned offsets shared a few slots and fell back to the full scan. Now a
+        mixed hash of all eight key fields, 4096 slots; a hit is still checked field by field.
+      - The descriptor signature (a byte-wise FNV-1a of the draw's 32-48 descriptor slots, ~500-770 cycles) was
+        computed on every draw for the recent-draw crash history only. The ring keeps the slots and
+        ld_dump_recent_draws computes the same value when it prints.
+      - sink_end_impl decoded all 16 texture units to find the enabled ones; it tests the enable bit (control0 bit
+        31, what rsx_dsp_get_texture reports as enabled) first.
+      - srv_cpu / smp_cpu / srv_table / sampler_table asked the descriptor heaps for their start handle on every call
+        (~20 COM calls per draw); the starts are read once when the heaps are created.
+    - A/B at the 1-1 arrival (fix 115 vs this, 150-170 s): render CPU 12.8 -> 12.5 / 11.6 ms/frame, 58.9 -> 59.1 /
+      59.9 fps (one fix 115 run with the display coming back on is left out). With fixes 114 and 115, Latria 4-2
+      uncapped 65.1 -> 65.7 fps (fix 114's entry).
+    - Review (2 agents + critic): no output change, race or build break; every writer of the sampler keys, ring tables,
+      texture keys and descriptor heaps checked. Noted: with LD_MEMO_CHECK=1 the texture memo's check counter moves
+      at a different rate (more memo hits).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
