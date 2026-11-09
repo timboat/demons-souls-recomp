@@ -22632,7 +22632,7 @@ index 8c4ccaa..3b29133 100644
   * Tag group synchronization
   * -----------------------------------------------------------------------*/
 diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
-index f04fda6..7603440 100644
+index f04fda6..9ee33c4 100644
 --- a/runtime/spu/spu_helpers.h
 +++ b/runtime/spu/spu_helpers.h
 @@ -465,7 +465,10 @@ static inline u128 spu_selb(u128 a, u128 b, u128 c) { return spu_selb_ref(a, b,
@@ -22752,7 +22752,46 @@ index f04fda6..7603440 100644
  static inline u128 spu_cdx(u128 a, u128 b){ return spu_cdd_pos((int)(a._u32[0]+b._u32[0])); }
  
  /* ---- Phase 3: rotate-and-mask family ---- */
-@@ -2330,4 +2406,69 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
+@@ -2260,10 +2336,34 @@ static inline u128 spu_xshw(u128 a) {
+ }
+ static inline u128 spu_clz(u128 a) { return spu_clz_ref(a); }
+ static inline u128 spu_xswd(u128 a) { return spu_xswd_ref(a); }
+-static inline u128 spu_orx(u128 a) { return spu_orx_ref(a); }
+-static inline u128 spu_gb(u128 a) { return spu_gb_ref(a); }
+-static inline u128 spu_gbh(u128 a) { return spu_gbh_ref(a); }
+-static inline u128 spu_gbb(u128 a) { return spu_gbb_ref(a); }
++/* fix 127: the four ops whose result is one preferred-slot word. The scalar forms built a zero vector
++ * and stored word 0 over it; in lifted code clang turned that into a 4-byte store next to wider ones,
++ * and the full-register read that follows (ceqi, or) failed store-to-load forwarding -- the hottest
++ * stalls in the dispatcher's 8E18 loop. Here the result is made in one register (movd). Same bits. */
++static inline u128 spu_orx(u128 a) {
++    __m128i x = spu__xl(a);
++    x = _mm_or_si128(x, _mm_shuffle_epi32(x, 0x4E));
++    x = _mm_or_si128(x, _mm_shuffle_epi32(x, 0xB1));
++    return spu__xs(_mm_cvtsi32_si128(_mm_cvtsi128_si32(x)));
++}
++static inline u128 spu_gb(u128 a) {
++    /* word i's LSB to its sign bit, words reversed so movemask bit 3-i = word i (ref: word 0 -> bit 3) */
++    const __m128i x = _mm_shuffle_epi32(_mm_slli_epi32(spu__xl(a), 31), 0x1B);
++    return spu__xs(_mm_cvtsi32_si128(_mm_movemask_ps(_mm_castsi128_ps(x))));
++}
++static inline u128 spu_gbh(u128 a) {
++    /* result bit k = LSB of host halfword (7-k)^1 (SPU halfword 7-k): gather those to lanes 0-7,
++     * LSB -> sign, pack to bytes, movemask */
++    const __m128i sel = _mm_setr_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
++    const __m128i x = _mm_slli_epi16(_mm_shuffle_epi8(spu__xl(a), sel), 15);
++    return spu__xs(_mm_cvtsi32_si128(_mm_movemask_epi8(_mm_packs_epi16(x, _mm_setzero_si128()))));
++}
++static inline u128 spu_gbb(u128 a) {
++    /* result bit k = LSB of SPU byte 15-k = host byte SPU_W(15-k); bit 0 -> bit 7 of each byte */
++    const __m128i sel = _mm_setr_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3);
++    const __m128i x = _mm_slli_epi16(_mm_shuffle_epi8(spu__xl(a), sel), 7);
++    return spu__xs(_mm_cvtsi32_si128(_mm_movemask_epi8(x)));
++}
+ static inline u128 spu_fsm(u128 a) { return spu_fsm_ref(a); }
+ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
+ static inline u128 spu_fsmb(u128 a) { return spu_fsmb_ref(a); }
+@@ -2330,4 +2430,69 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
  static inline u128 spu_fsmb(u128 a) { return spu_fsmb_ref(a); }
  #endif
  

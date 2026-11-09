@@ -2704,6 +2704,17 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Tour (7 stops): every stop 59.2-60 mean, no aborts or halts. Boletaria 1-1 (load-in, walk, turn): 59.9 fps, p99 19.1 ms, worst frame 49.9 ms (fix 124 build: p99 19.7, worst 112 ms).
     - Not changed: the perf log's per-thread CPU table now lists "spu job" pool threads (short threads were never
       seen), so its numbers do not compare directly with older logs; SPU_TASK_POOL=0 gives the old picture.
+127. **SPU gather-bits ops without store-forwarding stalls (2026-11-09, 5800X):**
+    - Instruction profile of the dispatcher while HighGraphics waits on it (fix 126 build, paired samples): its 8E18
+      loop (8% of that time) and 7348 stalled on failed store-to-load forwards. spu_gb's x86 form was the scalar
+      reference -- a zero vector with word 0 stored over it -- which clang compiled into a 4-byte store, and the
+      ceqi / and that reads the register next loads all 16 bytes.
+    - Fix (runtime/spu/spu_helpers.h, x86 block only): spu_gb, spu_gbh, spu_gbb (shift each element's LSB to its
+      top bit, reorder, movemask) and spu_orx (two shuffle-ORs) build their one-word result in a register (movd), so
+      the register is stored whole. Checked against the _ref forms: 80 M random and LSB / mask-pattern inputs each,
+      with -mavx2 and with -msse4.1, 0 mismatches.
+    - A/B at Latria 4-2 uncapped (fix 126 vs this, 3 each): 73.2 / 73.2 / 73.2 -> 73.5 / 74.8 / 73.3 fps (small).
+      Tour: every stop 59.3-60 mean, no aborts or halts.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
