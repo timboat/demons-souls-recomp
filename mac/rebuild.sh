@@ -112,6 +112,10 @@ for s in $steps; do
         jobs=(); [ -n "$JOBS" ] && [ "$JOBS" != 0 ] && jobs=(-j "$JOBS")
         ninja -C "$DES_BUILD" "${jobs[@]}" || fail "the build failed (see the lines above)"
         [ -x "$DES_EXE" ] && [ -x "$DES_WIN" ] || fail "the build ended without $DES_EXE and $DES_WIN"
+        # The keyboard / mouse button icons, from this copy of the game (NOTES fixes 91, 134). Never stops
+        # the build: without them the game shows the PS3 buttons.
+        "$VPY" "$DES_ROOT/tools/kbm_icons.py" "$DES_USRDIR" "$DES_ROOT/textures/kbm" --if-stale ||
+            print -r -- "  keyboard / mouse button icons not made; the game shows the PS3 buttons"
         print -r -- "  built: $DES_EXE" ;;
     esac
 done

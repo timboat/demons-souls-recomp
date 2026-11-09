@@ -3154,6 +3154,30 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       the light in open sky was found here either.
     - Seen on the way: Boletaria at 21-34 fps when moving with live input, 28-29 at the 2,0,999 start and 48-52 at the save's
       spot, standing still. The render settings did not change these: step 3 of the Mac list.
+133. **macOS: the mouse in the menus (2026-11-08, MacBook M2 Pro; fixes 89 and 93 on the Mac):**
+    - Before: the menu hooks in cellPad.c's non-Windows block were stand-ins, so the mouse did nothing in menus: left / right click stayed
+      R1 / L1 and there was no arrow or hover.
+    - Fix: the fix 89 / 93 rules in cellPad.c's off-Windows block (pad_menu_mouse; the lifted pointing code is the same on every host).
+      Left click = confirm, right = back, wheel = d-pad, side buttons and PageUp / PageDown = L1 / R1, the same click rule (hit state), notch
+      queue, pointer authority and dead buttons across a menu's edges. The input block (host_input.h) gains PS3_HOST_INPUT_MENU and
+      pointer_x / y / valid in its reserved bytes (still 64); host_input_cocoa.h frees the cursor in a menu, recaptures it on close (not after
+      Esc) and maps it to menu units through the centred 16:9 picture. mouse-moved events are turned on while a menu is open.
+    - Test (sandbox, a copy of the save; new PAD_TEST_GUEST / PAD_TEST_MBTN / PAD_TEST_WHEEL replace the real mouse and keys): title, hover moved
+      NEW GAME -> LOAD GAME; left click on it opened the Profile List; 3 wheel notches down moved row 4 -> row 3 (wrapping); right click
+      backed out to the title. Frame dumps and DES_MENU_LOG / DES_POINT_LOG agree.
+    - Not tested: a real mouse. The scripted test covers cellPad and the game side but not host_input_cocoa.h's cursor release, recapture and
+      event mapping. PAD_MENU_MOUSE=0 and DES_POINT=0 as on Windows.
+134. **macOS: keyboard / mouse button icons (2026-11-08, MacBook M2 Pro; fix 91 on the Mac):**
+    - Fix: rsx_draw_engine.c (`__APPLE__` only) scans textures/kbm, computes the same key as Windows for textures of an icon atlas's exact size
+      (texpack_key over texture_content_hash, both repeated there, so the files and keys are shared) and binds the icons while
+      ps3_host_kbm_active() (cellPad.c, off Windows: no pad, or a key / mouse button / captured mouse used after it). texpack_kbm_want moves there
+      on macOS, so the title says "PRESS ENTER KEY" as on Windows (fixes 92 / 103; the Mac's start key is Return, ps3_host_start_key_text answers
+      ENTER). mac/rebuild.sh's build step draws the icons with tools/kbm_icons.py --if-stale.
+    - This is the basic texture replacement of the Mac list: PNG, keyed files for icons only, not texture packs.
+    - Checked: all three keys came out equal to the Windows file names (CE4F0427E62376F5, 073A392EE5388F44, 0740A345421ED259 logged by
+      RSX_ENGINE_KBM_LOG=1). In-game frames: L / R / square on the HUD become mice and R; the Start menu's help line shows E and Space; the Profile
+      List's E / Space / R; the title PRESS ENTER KEY. Switching to a pad and back was not run (no pad here, Mac stand-in for fix 91's rule).
+    - LD_TEX_KBM=0 / 1, LD_TEX_DIR, LD_TEX_KBM_DIR as on Windows.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

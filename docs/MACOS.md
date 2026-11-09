@@ -23,8 +23,7 @@ renderer fixes on Windows can look different here.
 - **The D3D12 renderer's extras:**
   - frame pacing, which is why there is no 50 fps mode and no rate above 60;
   - `DES_PERF` and F12 captures;
-  - texture packs and the remaster's shaders;
-  - pointing with the mouse in menus.
+  - texture packs and the remaster's shaders.
 - **On-screen keyboard:** there is no text box. The character name comes from `DES_NAME`.
 
 ## What you need
@@ -127,6 +126,11 @@ Keyboard and mouse use the Windows layout (`mac/input.toml`):
 | Backspace | Select |
 
 Esc or Cmd releases the mouse.
+
+In menus the mouse is a pointer: moving it over an item selects it, left click confirms, right click goes
+back, the wheel moves the cursor, and the side buttons or PageUp / PageDown are L1 / R1. While the keyboard or
+mouse is what you used last, the game's button icons show the keys and mouse buttons (`textures/kbm`, drawn
+from your copy of the game by `mac/rebuild.sh build`). `LD_TEX_KBM=0` keeps the PS3 icons.
 
 ## Mac-specific fixes so far (in `patches/`)
 

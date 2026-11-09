@@ -32,10 +32,10 @@ index 250d8d2..79ad9a5 100644
      #
 diff --git a/include/ps3emu/host_input.h b/include/ps3emu/host_input.h
 new file mode 100644
-index 0000000..07924a4
+index 00000000..c2dfd084
 --- /dev/null
 +++ b/include/ps3emu/host_input.h
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,77 @@
 +/*
 + * ps3recomp - keyboard and mouse state handed to the host pad (cellPad.c)
 + *
@@ -64,6 +64,9 @@ index 0000000..07924a4
 + *   game_flags       written by the game: what the window should do with
 + *                    the mouse (PS3_HOST_INPUT_*)
 + *   captured         written by the window: 1 while the cursor is captured
++ *   pointer_x/y      the cursor in the picture while a menu is open, in menu
++ *                    layout units (1280 x 720) * 10
++ *   pointer_valid    1 while pointer_x/y are inside the picture
 + *
 + * Plain C, header only: cellPad.c, the Metal backend, the window host and the
 + * tests share it.
@@ -78,6 +81,7 @@ index 0000000..07924a4
 +#define PS3_HOST_INPUT_MOUSE_CAMERA  0x1u   /* the mouse turns the camera now */
 +#define PS3_HOST_INPUT_CAPTURE       0x2u   /* ... and wants the cursor captured on a click */
 +#define PS3_HOST_INPUT_ACTIVE        0x4u   /* a cellPad that reads this block is running */
++#define PS3_HOST_INPUT_MENU          0x8u   /* a menu is open: free cursor, clicks and wheel are the menu's */
 +
 +typedef struct {
 +    _Atomic uint32_t keys[4];
@@ -85,7 +89,9 @@ index 0000000..07924a4
 +    _Atomic uint32_t mouse_buttons;
 +    _Atomic uint32_t game_flags;
 +    _Atomic uint32_t captured;
-+    uint32_t         reserved[6];
++    _Atomic int32_t  pointer_x, pointer_y;
++    _Atomic uint32_t pointer_valid;
++    uint32_t         reserved[3];
 +} ps3_host_input;
 +
 +_Static_assert(sizeof(ps3_host_input) == 64, "ps3_host_input layout");
@@ -5527,7 +5533,7 @@ index 0000000..d9edd4d
 +
 +#endif /* PS3RECOMP_VDEC_MF_H */
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index afdd93de..cf93a2b5 100644
+index afdd93de..150e0ab3 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -9,6 +9,23 @@
@@ -5569,25 +5575,21 @@ index afdd93de..cf93a2b5 100644
  
  /* PAD_CLOCK=flips: PAD_SCRIPT and PAD_STICK times count guest flips instead of
   * wall-clock seconds. A loaded machine runs a title at a third of its usual
-@@ -61,6 +82,26 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -61,6 +82,22 @@ static double pad_clock(unsigned long long t0_ms)
    #include <xinput.h>
  #endif
  
 +#ifndef _WIN32
 +/* The keyboard / mouse layer further down is Win32 (raw input, the game window's
-+ * HWND). The macOS / Linux build plays with a pad through SDL; the lifted
-+ * code's hooks into that layer answer "no keyboard, no mouse": no hotkeys, no
-+ * menu pointer, no mouse look. */
++ * HWND). Off Windows the lifted code's hooks into that layer answer "no
++ * hotkeys, no mouse look"; the menu mouse has its own form below (off Windows,
++ * "Menus"). */
 +int  ps3_host_hotkey(int vk) { (void)vk; return 0; }
 +void ps3_host_title_suffix(const char* s) { (void)s; }
-+void ps3_host_menu_state(unsigned mask) { (void)mask; }
-+void ps3_host_point_hit(int state) { (void)state; }
-+int  ps3_host_pointer_pos(float* x, float* y) { (void)x; (void)y; return 0; }
-+int  ps3_host_pointer(float* x, float* y, unsigned* seq) { (void)x; (void)y; (void)seq; return 0; }
 +void ps3_host_mouse_look_frame(void) {}
 +int  ps3_host_mouse_look_take(int* dx, int* dy) { if (dx) *dx = 0; if (dy) *dy = 0; return 0; }
 +int  ps3_host_mouse_look_pending(void) { return 0; }
-+int  ps3_host_start_key_text(char* out, int cap) { if (out && cap > 0) out[0] = 0; return 0; }
++int  ps3_host_start_key_text(char* out, int cap) { if (!out || cap < 6) return 0; memcpy(out, "ENTER", 6); return 1; }   /* mac/input.toml: start = Return */
 +/* Buttons the title's own port code holds (DES_SKIP_INTRO, NOTES fix 96); defined in the Win32
 + * keyboard block on Windows, read by the shared poll on every host. */
 +volatile unsigned g_ps3_pad_inject;
@@ -5596,7 +5598,7 @@ index afdd93de..cf93a2b5 100644
  #if PAD_BACKEND_SDL2
    #include <SDL2/SDL.h>
  #endif
-@@ -71,6 +112,11 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -71,6 +108,11 @@ static double pad_clock(unsigned long long t0_ms)
  
  #define PAD_MAX_HOST_PORTS  4  /* XInput supports max 4; SDL may support more */
  
@@ -5608,7 +5610,7 @@ index afdd93de..cf93a2b5 100644
  typedef struct {
      int  connected;
      u16  buttons;           /* CELL_PAD_CTRL_* bitmask */
-@@ -100,6 +146,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
+@@ -100,6 +142,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
  /* Per-port "a report has arrived since your last read" flag; see cellPadGetData. */
  static int s_data_fresh[PAD_MAX_HOST_PORTS];
  
@@ -5680,7 +5682,7 @@ index afdd93de..cf93a2b5 100644
  #if PAD_BACKEND_SDL2
  /* PS3 port i's controller, by SDL instance id (-1 = none); the port keeps the
   * GUID of the last one it had so that pad gets the same port back. */
-@@ -171,6 +282,12 @@ static u32 pad_status_take(u32 port)
+@@ -171,6 +278,12 @@ static u32 pad_status_take(u32 port)
   * PAD_RUMBLE_HOLD_MS. Large -> the host's low-frequency motor, small -> the
   * high-frequency one, which is how DualShock 4, DualSense and Xbox pads are
   * laid out too.
@@ -5693,7 +5695,7 @@ index afdd93de..cf93a2b5 100644
   * -------------------------------------------------------------------------*/
  
  #define PAD_RUMBLE_HOLD_MS     1000   /* one SDL request lasts this long ... */
-@@ -179,16 +296,43 @@ static u32 pad_status_take(u32 port)
+@@ -179,16 +292,43 @@ static u32 pad_status_take(u32 port)
  typedef struct {
      u16 lo, hi;                 /* what the host motors were last asked for */
      unsigned long long sent_ms; /* when (pad_now_ms), 0 = nothing to renew */
@@ -5714,14 +5716,10 @@ index afdd93de..cf93a2b5 100644
 +    if (v > 200) v = 200;
 +    return (int)v;
 +}
- 
--/* The two host motor levels (0-65535) for a PS3 actuator request. */
--static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
++
 +static int s_rumble_pct = -1;
 +static int pad_rumble_strength(void)
- {
--    *lo = (u16)(large * 257u);
--    *hi = small_on ? 0xFFFFu : 0u;
++{
 +    int s = s_rumble_pct;
 +    if (s < 0) {
 +        s = pad_rumble_strength_from(getenv("PS3_RUMBLE"), getenv("PS3_RUMBLE_STRENGTH"));
@@ -5730,11 +5728,15 @@ index afdd93de..cf93a2b5 100644
 +    }
 +    return s;
 +}
-+
+ 
+-/* The two host motor levels (0-65535) for a PS3 actuator request. */
+-static void pad_rumble_levels(u8 small_on, u8 large, u16* lo, u16* hi)
 +/* The two host motor levels (0-65535) for a PS3 actuator request, at `pct`
 + * percent strength. */
 +static void pad_rumble_levels(u8 small_on, u8 large, int pct, u16* lo, u16* hi)
-+{
+ {
+-    *lo = (u16)(large * 257u);
+-    *hi = small_on ? 0xFFFFu : 0u;
 +    unsigned long l = (unsigned long)large * 257ul * (unsigned long)pct / 100ul;
 +    unsigned long h = small_on ? 65535ul * (unsigned long)pct / 100ul : 0;
 +    *lo = (u16)(l > 65535ul ? 65535ul : l);
@@ -5742,7 +5744,7 @@ index afdd93de..cf93a2b5 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -258,8 +402,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -258,8 +398,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * it can be watched but not played. That is what The Simpsons Arcade Game hit:
   * it reached its attract loop and no input existed to start a game.
   *
@@ -5753,7 +5755,7 @@ index afdd93de..cf93a2b5 100644
   * read only while a window of THIS process is in the foreground, so typing in
   * another application does not drive the game. Set PAD_NO_KEYBOARD=1 to
   * disable it entirely.
-@@ -268,8 +412,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -268,8 +408,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * 1/2 = L2/R2, Enter = START, Tab = SELECT. The left stick mirrors the d-pad
   * so a title that reads the stick instead is playable too. */
  #ifdef _WIN32
@@ -5766,7 +5768,7 @@ index afdd93de..cf93a2b5 100644
      HWND fg = GetForegroundWindow();
      if (!fg) return 0;
      DWORD pid = 0;
-@@ -277,23 +425,711 @@ static int pad_host_window_focused(void)
+@@ -277,23 +421,711 @@ static int pad_host_window_focused(void)
      return pid == GetCurrentProcessId();
  }
  
@@ -5947,7 +5949,7 @@ index afdd93de..cf93a2b5 100644
 +        }
 +        if (!end) break;
 +        e = end + 1;
-+    }
+     }
 +    if (changed) { printf("[cellPad] key bindings: %d action(s) from PAD_KEYS\n", changed); fflush(stdout); }
 +}
 +static int pad_kb_down(int i)
@@ -6029,7 +6031,7 @@ index afdd93de..cf93a2b5 100644
 +        _snwprintf(t, 400, L"%ls%hs", base, (const char*)p);
 +        t[399] = 0;
 +        SetWindowTextW(w, t);
-     }
++    }
 +    ReleaseSRWLockExclusive(&lock);
 +    free(p);
 +    return 0;
@@ -6041,7 +6043,7 @@ index afdd93de..cf93a2b5 100644
 +    HANDLE h = CreateThread(NULL, 0, pad_title_thread, copy, 0, NULL);
 +    if (h) CloseHandle(h); else free(copy);
 +}
- 
++
 +/* PAD_KEYMAP=souls: a keyboard + mouse layout for third-person action games (Demon's Souls).
 + *   WASD = left stick (move)            mouse / IJKL = right stick (camera)
 + *   LMB = R1 (attack)  SHIFT = R2 (strong attack)  RMB = L1 (block)  CTRL = L2 (parry)
@@ -6485,13 +6487,13 @@ index afdd93de..cf93a2b5 100644
 +    hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
 +    hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
 +}
-+
+ 
 +static void pad_poll_keyboard_basic(PadHostState* hs)
 +{
      static const struct { int vk; u16 btn; } map[] = {
          { VK_UP,     CELL_PAD_CTRL_UP },      { VK_DOWN,  CELL_PAD_CTRL_DOWN },
          { VK_LEFT,   CELL_PAD_CTRL_LEFT },    { VK_RIGHT, CELL_PAD_CTRL_RIGHT },
-@@ -306,7 +1142,7 @@ static void pad_poll_keyboard(void)
+@@ -306,7 +1138,7 @@ static void pad_poll_keyboard(void)
  
      u16 btns = 0;
      for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
@@ -6500,12 +6502,12 @@ index afdd93de..cf93a2b5 100644
  
      hs->buttons   = btns;
      hs->connected = 1;
-@@ -317,10 +1153,100 @@ static void pad_poll_keyboard(void)
+@@ -317,10 +1149,100 @@ static void pad_poll_keyboard(void)
      hs->analog_rx = hs->analog_ry = 128;
      hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
      hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
 +}
- 
++
 +/* The keyboard (and in the souls layout the mouse) drives port 0 whether or not an XInput pad is
 + * there (Demon's Souls NOTES fix 73). Before, it was only read with no pad on port 0, so a pad that
 + * was merely switched on -- or a virtual one (Steam, DS4Windows, ViGEm) -- made Enter / START and
@@ -6525,7 +6527,7 @@ index afdd93de..cf93a2b5 100644
 +    if (off < 0) off = getenv("PAD_NO_KEYBOARD") ? 1 : 0;
 +    s_dbg_kb = 0;
 +    if (off) { s_kbm_active = 0; return; }   /* no keyboard: the pad's icons */
-+
+ 
 +    PadHostState* hs = &s_host_state[0];
 +    const int pad = hs->connected;
 +    static int kb_last = 0;   /* the keyboard / mouse was used more recently than the pad */
@@ -6603,7 +6605,7 @@ index afdd93de..cf93a2b5 100644
            fflush(stdout); } }
  }
  #endif
-@@ -443,12 +1369,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+@@ -443,12 +1365,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
      return (u8)val;
  }
  
@@ -6639,7 +6641,7 @@ index afdd93de..cf93a2b5 100644
      const int on = r->lo || r->hi;
      SDL_GameControllerRumble(gc, r->lo, r->hi, on ? PAD_RUMBLE_HOLD_MS : 0);
      r->sent_ms = on ? pad_now_ms() : 0;
-@@ -562,9 +1510,14 @@ static void pad_sdl_hotplug(int force)
+@@ -562,9 +1506,14 @@ static void pad_sdl_hotplug(int force)
  
  static void pad_poll_sdl2(void)
  {
@@ -6654,7 +6656,7 @@ index afdd93de..cf93a2b5 100644
      for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
          SDL_GameController* gc = s_sdl_controllers[i];
          if (!gc) {
-@@ -575,43 +1528,59 @@ static void pad_poll_sdl2(void)
+@@ -575,43 +1524,59 @@ static void pad_poll_sdl2(void)
  
          s_host_state[i].connected = 1;
  
@@ -6743,7 +6745,7 @@ index afdd93de..cf93a2b5 100644
  
          /* Pressure: SDL has digital buttons, so 0 or 255 */
          s_host_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
-@@ -629,6 +1598,7 @@ static void pad_poll_sdl2(void)
+@@ -629,6 +1594,7 @@ static void pad_poll_sdl2(void)
  
  static void pad_init_backend(void)
  {
@@ -6751,7 +6753,7 @@ index afdd93de..cf93a2b5 100644
      if (!s_sdl_inited) {
          if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0) {
              /* The game is not always the focused app: on macOS its window
-@@ -643,6 +1613,17 @@ static void pad_init_backend(void)
+@@ -643,6 +1609,17 @@ static void pad_init_backend(void)
               * cared. SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the
               * environment still wins over this. */
              SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -6769,7 +6771,7 @@ index afdd93de..cf93a2b5 100644
              SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
          }
          s_sdl_inited = 1;
-@@ -650,6 +1631,11 @@ static void pad_init_backend(void)
+@@ -650,6 +1627,11 @@ static void pad_init_backend(void)
      memset(s_sdl_controllers, 0, sizeof(s_sdl_controllers));
      for (int p = 0; p < PAD_MAX_HOST_PORTS; p++) s_sdl_ids[p] = -1;
  
@@ -6781,7 +6783,7 @@ index afdd93de..cf93a2b5 100644
      /* Open any controllers already connected */
      pad_sdl_hotplug(1);
  }
-@@ -684,7 +1670,13 @@ static void pad_shutdown_backend(void)
+@@ -684,7 +1666,13 @@ static void pad_shutdown_backend(void)
  static unsigned long long pad_now_ms(void)
  {
  #ifdef _WIN32
@@ -6796,7 +6798,7 @@ index afdd93de..cf93a2b5 100644
  #else
      struct timespec ts;
      clock_gettime(CLOCK_MONOTONIC, &ts);
-@@ -693,6 +1685,240 @@ static unsigned long long pad_now_ms(void)
+@@ -693,6 +1681,483 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -6922,6 +6924,237 @@ index afdd93de..cf93a2b5 100644
 +    return m;
 +}
 +
++/* ---- Menus (Demon's Souls NOTES fixes 89, 93, on macOS 133) ----------------
++ * While a menu is open the mouse is the menu's: the window frees the cursor
++ * (PS3_HOST_INPUT_MENU), left click = confirm, right click = back, the wheel =
++ * d-pad up / down, the side buttons and PageUp / PageDown = L1 / R1. The arrow
++ * selects what it is over and a click confirms it, through the game's own
++ * pointing code (ppu_recomp_086.cpp), which reads ps3_host_pointer. Windows
++ * rules, same meaning: a button held when a menu opens stays dead in it, one
++ * pressed in the menu and held when it closes stays dead until released, and a
++ * resting mouse never fights the keys or a pad (pointer authority).
++ * PAD_MENU_MOUSE=0 or DES_POINT=0 as on Windows; DES_MENU_LOG=1, DES_POINT_LOG=1.
++ * TEST (the real mouse and keys are then ignored; times as PAD_CLOCK):
++ *   PAD_TEST_GUEST="<sec>:<x>,<y>;..."       the arrow at menu units x, y
++ *   PAD_TEST_MBTN="<sec>:<mask>:<dur>;..."   mouse buttons (1 left, 2 right, 8 / 16 side)
++ *   PAD_TEST_WHEEL="<sec>:<notches>;..."     wheel notches (+ = up) */
++#define PAD_MENU_GATE 0x7FFF777Fu
++#define PAD_MK_PAGEUP   116u
++#define PAD_MK_PAGEDOWN 121u
++static _Atomic unsigned  s_menu_mask;
++static _Atomic int       s_hit_state = -1;   /* -1 no pointing dialog, 0 no item, 1 selected, 2 another item */
++static _Atomic int       s_ptr_auth, s_ptr_inside;
++static _Atomic unsigned  s_ptr_seq, s_menu_epoch;
++static _Atomic long long s_ptr_pos;          /* layout units * 10: x in the high half, y in the low */
++static _Atomic unsigned  s_pad_reports;      /* fresh port-0 reports handed to the game */
++static uint32_t          s_mouse_stale;      /* buttons dead until released */
++static int s_point_on = -1;
++
++static int pad_point_on(void)
++{
++    if (s_point_on < 0) { const char* e = getenv("DES_POINT"); s_point_on = (e && *e == '0') ? 0 : 1; }
++    return s_point_on;
++}
++void ps3_host_menu_state(unsigned mask)
++{
++    static int log = -1;
++    if (log < 0) { const char* e = getenv("DES_MENU_LOG"); log = (e && *e == '1') ? 1 : 0; }
++    const unsigned old = atomic_exchange(&s_menu_mask, mask);
++    if (log && old != mask)
++        fprintf(stderr, "[menu] mask %08X -> %08X%s\n", old, mask,
++                (mask & PAD_MENU_GATE) ? "  (menu open: mouse = menu controls)" : "");
++}
++void ps3_host_point_hit(int state) { atomic_store(&s_hit_state, state); }
++int ps3_host_pointer_pos(float* x, float* y)
++{
++    if (!atomic_load(&s_ptr_inside)) return 0;
++    const long long p = atomic_load(&s_ptr_pos);
++    *x = (float)(int)(p >> 32) / 10.0f; *y = (float)(int)(p & 0xFFFFFFFF) / 10.0f;
++    return 1;
++}
++int ps3_host_pointer(float* x, float* y, unsigned* seq)
++{
++    for (int tries = 0; tries < 4; tries++) {   /* the position and its move counter as one pair */
++        const unsigned s1 = atomic_load(&s_ptr_seq);
++        const long long p = atomic_load(&s_ptr_pos);
++        if (!atomic_load(&s_ptr_auth)) return 0;
++        if (atomic_load(&s_ptr_seq) != s1) continue;
++        *x = (float)(int)(p >> 32) / 10.0f; *y = (float)(int)(p & 0xFFFFFFFF) / 10.0f;
++        if (seq) *seq = s1;
++        return 1;
++    }
++    return 0;
++}
++static int pad_menu_active(void)
++{
++    static int on = -1;
++    if (on < 0) { const char* e = getenv("PAD_MENU_MOUSE"); on = !(e && e[0] == '0'); }
++    if (!on) return 0;
++    /* the title and profile select run with mask 0: a pointing-aware dialog with focus is a menu too */
++    return (atomic_load(&s_menu_mask) & PAD_MENU_GATE) != 0 ||
++           (pad_point_on() && atomic_load(&s_hit_state) >= 0);
++}
++
++/* The scripted mouse; 1 = a script is set, and it replaces the real mouse. */
++static int pad_test_mouse(uint32_t* b, int* px, int* py, int* valid, int32_t* wheel)
++{
++    enum { MAX = 32 };
++    static struct { double t; int x, y; } pt[MAX];
++    static struct { double t, dur; uint32_t m; } mb[MAX];
++    static struct { double t; int n; } wh[MAX];
++    static int np = -1, nb, nw;
++    static unsigned long long t0;
++    if (np < 0) {
++        np = 0; t0 = pad_now_ms();
++        const char* e = getenv("PAD_TEST_GUEST");
++        while (e && *e && np < MAX) { double t; int x, y;
++            if (sscanf(e, "%lf:%d,%d", &t, &x, &y) == 3) { pt[np].t = t; pt[np].x = x; pt[np].y = y; np++; }
++            e = strchr(e, ';'); if (e) e++; }
++        e = getenv("PAD_TEST_MBTN");
++        while (e && *e && nb < MAX) { double t, d; unsigned m;
++            if (sscanf(e, "%lf:%u:%lf", &t, &m, &d) == 3) { mb[nb].t = t; mb[nb].m = m; mb[nb].dur = d; nb++; }
++            e = strchr(e, ';'); if (e) e++; }
++        e = getenv("PAD_TEST_WHEEL");
++        while (e && *e && nw < MAX) { double t; int n;
++            if (sscanf(e, "%lf:%d", &t, &n) == 2) { wh[nw].t = t; wh[nw].n = n; nw++; }
++            e = strchr(e, ';'); if (e) e++; }
++    }
++    if (!np && !nb && !nw) return 0;
++    if (!b) return 1;
++    const double t = pad_clock(t0);
++    *b = 0; *wheel = 0; *valid = 0;
++    for (int i = 0; i < np; i++) if (t >= pt[i].t) { *px = pt[i].x * 10; *py = pt[i].y * 10; *valid = 1; }
++    for (int i = 0; i < nb; i++) if (t >= mb[i].t && t < mb[i].t + mb[i].dur) *b |= mb[i].m;
++    for (int i = 0; i < nw; i++) if (wh[i].n && t >= wh[i].t) { *wheel += wh[i].n * 16; wh[i].n = 0; }
++    return 1;
++}
++
++static int pad_mac_stick_moved(u8 v) { return v < 128 - 40 || v > 128 + 40; }
++static _Atomic int s_kbm_active = 1;
++static int s_kbm_last = 1;              /* the keyboard / mouse was used more recently than the pad */
++int ps3_host_kbm_active(void) { return atomic_load(&s_kbm_active); }
++
++/* One poll of the mouse as menu controls. 1 = a menu is open and this poll is done. */
++static int pad_menu_mouse(ps3_host_input* in, int32_t wheel, uint32_t* ctl)
++{
++    static int menu_was, lr_was;
++    static uint32_t carry;
++    uint32_t b = atomic_load(&in->mouse_buttons);
++    int px = atomic_load(&in->pointer_x), py = atomic_load(&in->pointer_y);
++    int valid = (int)atomic_load(&in->pointer_valid);
++    int cap = (int)atomic_load(&in->captured);
++    if (pad_test_mouse(&b, &px, &py, &valid, &wheel)) cap = 0;
++    const unsigned mask_now = atomic_load(&s_menu_mask);
++    const int menu = pad_menu_active();
++
++    if (menu && !menu_was) {
++        carry = b; s_mouse_stale |= b;
++        atomic_fetch_add(&s_menu_epoch, 1u);
++    } else if (!menu && menu_was) {
++        s_mouse_stale = (s_mouse_stale & ~b) | (b & ~carry);
++        carry = 0;
++    } else if (menu) {
++        carry &= b;
++    }
++    s_mouse_stale &= b;
++    menu_was = menu;
++    if (!menu) {
++        lr_was = 0;
++        atomic_store(&s_ptr_auth, 0); atomic_store(&s_ptr_inside, 0);
++        return 0;
++    }
++
++    const uint32_t live = b & ~s_mouse_stale;
++    const int lmb = (live & 1u) != 0, rmb = (live & 2u) != 0;
++    int cross = lmb;
++    if (pad_point_on() && !cap && atomic_load(&s_ptr_inside)) {
++        /* A left click confirms only on an item: on the selected one it confirms; on another
++         * it selects it, then confirms once the game has moved there; on none it does nothing.
++         * Modes: 0 idle, 1 confirm while held, 2 dropped, 3 waiting for the selection,
++         * 4 deciding (the hit state lags the arrow by a step or two). */
++        static int mode, wait, lmb_prev, pulse;
++        static unsigned decide_mark, pulse_mark;
++        const int st = atomic_load(&s_hit_state);
++        const unsigned reports = atomic_load(&s_pad_reports);
++        if (lmb && !lmb_prev) {
++            static int lg = -1;
++            if (lg < 0) { const char* e = getenv("DES_POINT_LOG"); lg = (e && *e && *e != '0') ? 1 : 0; }
++            if (lg) fprintf(stderr, "[pt-click] hit=%d\n", st);
++            if (st == 2) { atomic_fetch_add(&s_ptr_seq, 1u); atomic_store(&s_ptr_auth, 1); mode = 3; wait = 30; }
++            else if (st == 0) { mode = 4; decide_mark = reports; }
++            else mode = 1;
++        }
++        lmb_prev = lmb;
++        if (mode == 4) {
++            if (st == 2) { atomic_fetch_add(&s_ptr_seq, 1u); atomic_store(&s_ptr_auth, 1); mode = 3; wait = 30; }
++            else if (st == 1 || st < 0) { mode = lmb ? 1 : 0; if (!lmb) { pulse = 1; pulse_mark = reports; } }
++            else if (reports - decide_mark >= 3u) mode = lmb ? 2 : 0;
++        }
++        if (mode == 3) {
++            if (st == 1) { mode = lmb ? 1 : 0; if (!lmb) { pulse = 1; pulse_mark = reports; } }
++            else if (--wait <= 0) mode = 0;
++        } else if (!lmb && mode != 4) mode = 0;
++        cross = mode == 1 && lmb;
++        if (pulse) { if (reports - pulse_mark < 2u) cross = 1; else pulse = 0; }   /* 2 fresh reports */
++    }
++    if (cross) *ctl |= CELL_PAD_CTRL_CROSS;
++    if (rmb)   *ctl |= CELL_PAD_CTRL_CIRCLE;
++    const int menu_click = (lmb || rmb) && !lr_was;
++    lr_was = lmb || rmb;
++    const uint32_t k3 = atomic_load(&in->keys[PAD_MK_PAGEUP >> 5]);
++    if ((live & 8u)  || (k3 >> (PAD_MK_PAGEUP & 31) & 1u))   *ctl |= CELL_PAD_CTRL_L1;
++    if ((live & 16u) || (k3 >> (PAD_MK_PAGEDOWN & 31) & 1u)) *ctl |= CELL_PAD_CTRL_R1;
++
++    /* The wheel: each notch one d-pad press, held then released for PAD_WHEEL_HOLD fresh reports
++     * (the game's repeat detector needs a release). At most 8 queued; dropped when the menu changes
++     * or on a click, so leftover notches never move another menu's cursor. */
++    {
++        static int hold = -1, rem, phase, dir, qn, qh;
++        static signed char q[8];
++        static unsigned last_mask, mark;
++        if (hold < 0) { const char* e = getenv("PAD_WHEEL_HOLD"); hold = e ? atoi(e) : 2; if (hold < 1 || hold > 30) hold = 2; }
++        rem += wheel;
++        int notches = rem / 16;
++        rem -= notches * 16;
++        if (mask_now != last_mask || menu_click) { qn = 0; rem = 0; notches = 0; }
++        last_mask = mask_now;
++        for (; notches && qn < 8; notches += notches > 0 ? -1 : 1, qn++)
++            q[(qh + qn) & 7] = (signed char)(notches > 0 ? 1 : -1);
++        const unsigned now = atomic_load(&s_pad_reports);
++        if (phase == 1 && now - mark >= (unsigned)hold) { phase = 2; mark = now; }
++        else if (phase == 2 && now - mark >= (unsigned)hold) phase = 0;
++        if (phase == 0 && qn) { dir = q[qh]; qh = (qh + 1) & 7; qn--; phase = 1; mark = now; }
++        if (phase == 1) *ctl |= dir > 0 ? CELL_PAD_CTRL_UP : CELL_PAD_CTRL_DOWN;
++    }
++
++    if (pad_point_on() && !cap) {
++        /* A move = 2+ menu units; the first sample after a menu opens grants no authority. */
++        static int last_x = -100000, last_y = -100000;
++        static unsigned epoch = ~0u;
++        const unsigned now_epoch = atomic_load(&s_menu_epoch);
++        if (epoch != now_epoch) { epoch = now_epoch; last_x = last_y = -100000; }
++        if (valid) atomic_store(&s_ptr_pos, ((long long)px << 32) | (long long)(unsigned)py);
++        atomic_store(&s_ptr_inside, valid);
++        if (valid && (abs(px - last_x) >= 20 || abs(py - last_y) >= 20)) {
++            const int first = last_x == -100000;
++            last_x = px; last_y = py;
++            if (!first || getenv("PAD_TEST_GUEST")) { atomic_fetch_add(&s_ptr_seq, 1u); atomic_store(&s_ptr_auth, 1); }
++            static int log = -1;
++            if (log < 0) { const char* e = getenv("DES_POINT_LOG"); log = (e && *e && *e != '0') ? 1 : 0; }
++            if (log) fprintf(stderr, "[pt-ptr] menu (%.1f,%.1f)%s\n", px / 10.0, py / 10.0, first ? " (first sample)" : "");
++        }
++        if (!valid) atomic_store(&s_ptr_auth, 0);
++        const uint32_t dirs = CELL_PAD_CTRL_UP | CELL_PAD_CTRL_DOWN | CELL_PAD_CTRL_LEFT | CELL_PAD_CTRL_RIGHT;
++        const uint32_t wasd = (1u << PIM_LS_UP) | (1u << PIM_LS_DOWN) | (1u << PIM_LS_LEFT) | (1u << PIM_LS_RIGHT);
++        const PadHostState* ps = &s_host_state[0];
++        if ((*ctl & (dirs | wasd)) ||
++            (ps->connected && ((ps->buttons & dirs) || pad_mac_stick_moved(ps->analog_lx) || pad_mac_stick_moved(ps->analog_ly) ||
++                               pad_mac_stick_moved(ps->analog_rx) || pad_mac_stick_moved(ps->analog_ry))))
++            atomic_store(&s_ptr_auth, 0);
++    }
++    return 1;
++}
++
 +/* What the window should do with the mouse (ps3_host_input.game_flags). */
 +static uint32_t pad_mouse_flags(void)
 +{
@@ -6930,6 +7163,7 @@ index afdd93de..cf93a2b5 100644
 +    if (s_mouse_on && pad_input_mode() != PAD_MODE_CONTROLLER) {
 +        f |= PS3_HOST_INPUT_MOUSE_CAMERA;
 +        if (s_mouse_capture) f |= PS3_HOST_INPUT_CAPTURE;
++        if (pad_menu_active()) f |= PS3_HOST_INPUT_MENU;
 +    }
 +    return f;
 +}
@@ -6949,8 +7183,9 @@ index afdd93de..cf93a2b5 100644
 +    const int32_t dy = atomic_exchange(&in->mouse_dy, 0);
 +    const int32_t w  = atomic_exchange(&in->wheel, 0);
 +    if (!s_mouse_on) return;
++    if (pad_menu_mouse(in, w, ctl)) return;   /* a menu is open: the mouse is its controls */
 +    const unsigned long long now = pad_now_ms();
-+    uint32_t b = atomic_load(&in->mouse_buttons);
++    uint32_t b = atomic_load(&in->mouse_buttons) & ~s_mouse_stale;
 +    if ((w > 0 && wheel_acc < 0) || (w < 0 && wheel_acc > 0)) wheel_acc = 0;   /* turned back */
 +    wheel_acc += w;
 +    while (wheel_acc >= 16)  { wheel_acc -= 16; if (wheel_up.pending < 3)   wheel_up.pending++; }
@@ -6995,13 +7230,23 @@ index afdd93de..cf93a2b5 100644
 +    const uint32_t flags = pad_mouse_flags();
 +    if (atomic_load(&in->game_flags) != flags) atomic_store(&in->game_flags, flags);
 +    uint32_t keys[4];
-+    for (int i = 0; i < 4; i++) keys[i] = atomic_load(&in->keys[i]);
++    for (int i = 0; i < 4; i++) keys[i] = pad_test_mouse(NULL, NULL, NULL, NULL, NULL) ? 0 : atomic_load(&in->keys[i]);
 +    uint32_t ctl = 0;
 +    if (keys[0] | keys[1] | keys[2] | keys[3])
 +        for (int c = 0; c < PIM_N_CONTROLS; c++)
 +            if (pim_keys_hit(map, c, keys)) ctl |= 1u << c;
 +    int mrx, mry;
 +    pad_poll_mouse(in, &ctl, &mrx, &mry);
++    {   /* which icons the game shows (fix 91): whatever was used last, the keyboard / mouse without a pad */
++        const PadHostState* p0 = &s_host_state[0];
++        const int test = pad_test_mouse(NULL, NULL, NULL, NULL, NULL);
++        const uint32_t any_key = keys[0] | keys[1] | keys[2] | keys[3];
++        if (merge && (p0->buttons || pad_mac_stick_moved(p0->analog_lx) || pad_mac_stick_moved(p0->analog_ly) ||
++                      pad_mac_stick_moved(p0->analog_rx) || pad_mac_stick_moved(p0->analog_ry) ||
++                      p0->trigger_l2 > 30 || p0->trigger_r2 > 30)) s_kbm_last = 0;
++        if (test || any_key || atomic_load(&in->mouse_buttons) || atomic_load(&in->captured)) s_kbm_last = 1;
++        s_kbm_active = pad_input_mode() != PAD_MODE_CONTROLLER && (!merge || s_kbm_last);
++    }
 +    if (pad_input_mode() == PAD_MODE_CONTROLLER) { ctl = 0; mrx = mry = -1; }
 +    u16 btns = (u16)(ctl & 0xFFFFu);
 +    /* Stick axes: 0 = left/up, 255 = right/down. */
@@ -7037,7 +7282,7 @@ index afdd93de..cf93a2b5 100644
  static void pad_poll_backend(void)
  {
      static unsigned long long s_last_ms = 0;
-@@ -706,17 +1932,63 @@ static void pad_poll_backend(void)
+@@ -706,17 +2171,63 @@ static void pad_poll_backend(void)
      for (int _i = 0; _i < PAD_MAX_HOST_PORTS; _i++) s_data_fresh[_i] = 1;
  
  #if PAD_BACKEND_XINPUT
@@ -7103,7 +7348,7 @@ index afdd93de..cf93a2b5 100644
  /* ---------------------------------------------------------------------------
   * API implementations
   * -----------------------------------------------------------------------*/
-@@ -735,6 +2007,7 @@ s32 cellPadInit(u32 max_connect)
+@@ -735,6 +2246,7 @@ s32 cellPadInit(u32 max_connect)
      if (max_connect == 0 || max_connect > 127)
          return CELL_PAD_ERROR_INVALID_PARAMETER;
  
@@ -7111,7 +7356,7 @@ index afdd93de..cf93a2b5 100644
      s_pad_initialized = 1;
      s_max_connect = max_connect > CELL_PAD_MAX_PORT_NUM ? CELL_PAD_MAX_PORT_NUM : max_connect;
      memset(s_port_setting, 0, sizeof(s_port_setting));
-@@ -865,6 +2138,7 @@ skip_inject: ;
+@@ -865,6 +2377,7 @@ skip_inject: ;
          len = CELL_PAD_LEN_CHANGE_PRESS_ON;
  
      data->len = len;
@@ -7119,10 +7364,13 @@ index afdd93de..cf93a2b5 100644
      /* Finalize this call's packet freshness before any injected hold budget
       * advances. len=0 drain reads still build the ordinary payload, but do
       * not consume a PAD_FILE report. See the emission contract below. */
-@@ -875,6 +2149,17 @@ skip_inject: ;
+@@ -875,6 +2388,20 @@ skip_inject: ;
              if (!s_data_fresh[port_no]) data->len = 0;   /* nothing new: end the drain */
              else                        s_data_fresh[port_no] = 0;
          }
++#ifndef _WIN32
++        if (data->len && port_no == 0) atomic_fetch_add(&s_pad_reports, 1u);   /* the menu mouse's timing */
++#endif
 +#ifdef _WIN32
 +        if (data->len && port_no == 0) InterlockedIncrement(&s_pad_reports);   /* fix 89: wheel pulse timing */
 +        if (data->len && port_no == 0 && s_mouse_cap) {   /* fix 78: the mouse since the last report */
@@ -7137,7 +7385,7 @@ index afdd93de..cf93a2b5 100644
      }
      /* button[0] is reserved and 0 on hardware; button[1] carries the pad mode
       * in its high nibble (0x7) and len/2 in its low one. GH3 drops any packet
-@@ -947,13 +2232,28 @@ skip_inject: ;
+@@ -947,13 +2474,28 @@ skip_inject: ;
                    held[i]--;
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(ev[i].mask & 0xFF);
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((ev[i].mask >> 8) & 0xFF);
@@ -7168,7 +7416,7 @@ index afdd93de..cf93a2b5 100644
      /* PAD_FILE=<path> -- closed-loop input. Each poll, if the file holds a
       * button mask (same encoding as PAD_SCRIPT), press it for a fixed number
       * of positive guest reports and empty the file on admission. A driver
-@@ -967,6 +2267,7 @@ skip_inject: ;
+@@ -967,6 +2509,7 @@ skip_inject: ;
       *   echo 0x0040 4 > pad.txt  # DOWN for 4 reports (menus auto-repeat a
       *                            # long hold; the default is 40)
       */
@@ -7176,7 +7424,7 @@ index afdd93de..cf93a2b5 100644
      { static int s_pf = -1; static char pf_path[512];
        static unsigned held_mask = 0; static int held_n = 0;
        if (s_pf < 0) { const char* e = getenv("PAD_FILE");
-@@ -978,11 +2279,25 @@ skip_inject: ;
+@@ -978,11 +2521,25 @@ skip_inject: ;
                if (f) {
                    char buf[64]; buf[0] = 0;
                    if (fgets(buf, sizeof buf, f)) {
@@ -7207,7 +7455,7 @@ index afdd93de..cf93a2b5 100644
                    }
                    fclose(f);
                    if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
-@@ -1015,6 +2330,30 @@ skip_inject: ;
+@@ -1015,6 +2572,30 @@ skip_inject: ;
        if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
                    hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
                    hs->connected = 1; }
@@ -7238,7 +7486,7 @@ index afdd93de..cf93a2b5 100644
        /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
         * deflections instead of holding one. Guessing a single stick position and
         * re-running costs ~5 minutes a try; a sweep answers "can input move the
-@@ -1042,8 +2381,16 @@ skip_inject: ;
+@@ -1042,8 +2623,16 @@ skip_inject: ;
                  fprintf(stderr, "[PADSWEEP] step %d: l=(%u,%u) r=(%u,%u)%c", k,
                          steps[k][0], steps[k][1], steps[k][2], steps[k][3], 10); } }
          } } }
@@ -7257,7 +7505,7 @@ index afdd93de..cf93a2b5 100644
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X]  = hs->analog_lx;
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y]  = hs->analog_ly;
  
-@@ -1122,6 +2469,21 @@ emit:
+@@ -1122,6 +2711,21 @@ emit:
       * PAD_ALWAYS_CHANGE=1 restores the old always-a-packet behaviour. */
      {
          unsigned int ea = (unsigned int)(uintptr_t)data_guest;
@@ -7279,7 +7527,7 @@ index afdd93de..cf93a2b5 100644
          vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
          for (int _i = 0; _i < CELL_PAD_MAX_CODES; _i++)                    /* button[] u16 */
              vm_write16((unsigned long long)ea + 4 + (unsigned int)_i * 2, data->button[_i]);
-@@ -1395,18 +2757,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1395,18 +2999,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  
      param = GUEST_PTR(param, CellPadActParam*);
  
@@ -7311,7 +7559,7 @@ index afdd93de..cf93a2b5 100644
          XINPUT_VIBRATION vib;
          vib.wLeftMotorSpeed  = (WORD)lo;
          vib.wRightMotorSpeed = (WORD)hi;
-@@ -1419,7 +2789,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1419,7 +3031,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
      pad_sdl_rumble_send((int)port_no);
      pad_unlock();
  #endif
@@ -7322,10 +7570,10 @@ index afdd93de..cf93a2b5 100644
  
 diff --git a/libs/input/host_input_cocoa.h b/libs/input/host_input_cocoa.h
 new file mode 100644
-index 0000000..6236d00
+index 00000000..11ed121d
 --- /dev/null
 +++ b/libs/input/host_input_cocoa.h
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,202 @@
 +/*
 + * ps3recomp - AppKit events -> the keyboard/mouse pad's ps3_host_input block
 + *
@@ -7363,7 +7611,26 @@ index 0000000..6236d00
 +    ps3_host_input* in;
 +    int             captured;
 +    double          cap_since;   /* motion from before the capture is not the game's */
++    int             recapture;   /* a menu freed the cursor: capture it again when it closes */
 +} HostInputCocoa;
++
++/* The cursor in menu layout units: the picture is 16:9, centred in the window. */
++static inline void hic_pointer(HostInputCocoa* s, NSWindow* w)
++{
++    ps3_host_input* in = s->in;
++    const NSRect v = w ? [[w contentView] bounds] : NSZeroRect;
++    const double sc = fmin(v.size.width / 1280.0, v.size.height / 720.0);
++    if (!w || !(sc > 0.0) || ![w isKeyWindow]) { atomic_store(&in->pointer_valid, 0); return; }
++    const NSPoint p = [w mouseLocationOutsideOfEventStream];
++    const double gx = (p.x - (v.size.width - 1280.0 * sc) * 0.5) / sc;
++    const double gy = 720.0 - (p.y - (v.size.height - 720.0 * sc) * 0.5) / sc;
++    const int ok = gx >= 0.0 && gy >= 0.0 && gx < 1280.0 && gy < 720.0;
++    if (ok) {
++        atomic_store(&in->pointer_x, (int32_t)lround(gx * 10.0));
++        atomic_store(&in->pointer_y, (int32_t)lround(gy * 10.0));
++    }
++    atomic_store(&in->pointer_valid, ok ? 1u : 0u);
++}
 +
 +static inline void hic_release(HostInputCocoa* s)
 +{
@@ -7401,14 +7668,27 @@ index 0000000..6236d00
 +static inline void hic_focus_lost(HostInputCocoa* s)
 +{
 +    ps3_host_input_release_all(s->in);
++    atomic_store(&s->in->pointer_valid, 0);
 +    hic_release(s);
 +}
 +
-+static inline void hic_tick(HostInputCocoa* s)
++static inline void hic_tick(HostInputCocoa* s, NSWindow* w)
 +{
 +    const uint32_t f = atomic_load(&s->in->game_flags);
 +    const uint32_t want = PS3_HOST_INPUT_MOUSE_CAMERA | PS3_HOST_INPUT_CAPTURE;
 +    if (s->captured && (f & want) != want) hic_release(s);
++    /* A menu frees the cursor; a mouse that was captured goes back to the camera when it closes. */
++    if (f & PS3_HOST_INPUT_MENU) {
++        if (w && ![w acceptsMouseMovedEvents]) [w setAcceptsMouseMovedEvents:YES];
++        if (s->captured) { hic_release(s); s->recapture = 1; }
++        hic_pointer(s, w);   /* a cursor resting in place when the menu opened */
++    } else {
++        atomic_store(&s->in->pointer_valid, 0);
++        if (s->recapture) {
++            s->recapture = 0;
++            if ((f & want) == want && [NSApp isActive] && w && [w isKeyWindow]) hic_capture(s, w);
++        }
++    }
 +    if (![NSApp isActive]) hic_focus_lost(s);
 +}
 +
@@ -7421,10 +7701,12 @@ index 0000000..6236d00
 +    const int camera = (f & PS3_HOST_INPUT_MOUSE_CAMERA) != 0;
 +    const int cap_on = (f & PS3_HOST_INPUT_CAPTURE) != 0;
 +    const int key_win = w && [w isKeyWindow];
++    const int menu = (f & PS3_HOST_INPUT_MENU) != 0;
 +
 +    switch (t) {
 +    case NSEventTypeMouseMoved: case NSEventTypeLeftMouseDragged:
 +    case NSEventTypeRightMouseDragged: case NSEventTypeOtherMouseDragged: {
++        if (menu) { hic_pointer(s, w); return 0; }
 +        const int take = camera && (cap_on ? (s->captured && [ev timestamp] >= s->cap_since) : key_win);
 +        if (take) {
 +            atomic_fetch_add(&in->mouse_dx, (int32_t)lround([ev deltaX] * 16.0));
@@ -7446,7 +7728,9 @@ index 0000000..6236d00
 +        if (!down) { atomic_fetch_and(&in->mouse_buttons, ~bit); return 0; }
 +        if (!camera || !w || [ev window] != w) return 0;
 +        const int inside = NSPointInRect([ev locationInWindow], [[w contentView] frame]);
-+        if (!cap_on) {
++        if (menu) {          /* a click in a menu is the menu's; it never captures */
++            if (inside && key_win) { hic_pointer(s, w); atomic_fetch_or(&in->mouse_buttons, bit); }
++        } else if (!cap_on) {
 +            if (inside && key_win) atomic_fetch_or(&in->mouse_buttons, bit);
 +        } else if (s->captured) {
 +            atomic_fetch_or(&in->mouse_buttons, bit);
@@ -7456,7 +7740,7 @@ index 0000000..6236d00
 +        return 0;
 +    }
 +    case NSEventTypeScrollWheel:
-+        if (camera && (cap_on ? s->captured : ([ev window] == w && key_win))) {
++        if (camera && (cap_on && !menu ? s->captured : ([ev window] == w && key_win))) {
 +            const double dy = [ev isDirectionInvertedFromDevice] ? -[ev deltaY] : [ev deltaY];
 +            atomic_fetch_add(&in->wheel, (int32_t)lround(dy * 16.0));
 +        }
@@ -7479,7 +7763,7 @@ index 0000000..6236d00
 +    case NSEventTypeKeyDown: {
 +        if ([ev modifierFlags] & NSEventModifierFlagCommand) return 0;   /* the menu's */
 +        const unsigned vk = [ev keyCode] & 127u;
-+        if (vk == 0x35) hic_release(s);                                   /* Esc */
++        if (vk == 0x35) { hic_release(s); s->recapture = 0; }             /* Esc */
 +        ps3_host_input_key(in, vk, 1);
 +        return 1;
 +    }
@@ -10167,10 +10451,186 @@ index c4e4d84..5a56bdd 100644
  /* ---- decoded state getters -------------------------------------------- */
  
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 8dff6011..dd46b243 100644
+index 8dff6011..1ee77136 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
-@@ -1489,6 +1489,59 @@ static int eng_surface_to_guest(u32 slot)
+@@ -144,6 +144,8 @@ typedef struct {
+     u32 depth;                  /* slices of a 3D texture, else 1 */
+     u32 levels;                 /* SET_TEXTURE_FORMAT mipmap count it was built with */
+     int rewritten;              /* guest bytes rewritten by the engine itself */
++    u64 kbm_hash;               /* the content_hash kbm_file was looked up for */
++    int kbm_file;               /* 1 + its keyboard / mouse icon file, 0 = none */
+ 
+ } eng_texture;
+ 
+@@ -1315,6 +1317,148 @@ static u32 eng_texture_upload(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+     return handle;
+ }
+ 
++#ifdef __APPLE__
++/* Keyboard / mouse button icons (Demon's Souls NOTES fixes 91, 134). tools/kbm_icons.py draws
++ * textures/kbm/<KEY>_kbm_<name>.png from the player's own disc; <KEY> is the texture pack key of the
++ * atlas it replaces, the same on every host (rsx_tex_pack.c texpack_key over the D3D12 renderer's
++ * texture_content_hash, both repeated here). While the keyboard / mouse is what was used last those
++ * files are drawn instead of the PS3 art, and the art again once a pad is used. LD_TEX_DIR moves the
++ * folder (default textures), LD_TEX_KBM_DIR names kbm itself, LD_TEX_KBM=0 never, 1 always. */
++#include <ctype.h>
++#include <dirent.h>
++#include <pthread.h>
++extern unsigned char* stbi_load(const char* path, int* x, int* y, int* comp, int req);
++extern int stbi_info(const char* path, int* x, int* y, int* comp);
++extern void stbi_image_free(void* p);
++extern int ps3_host_kbm_active(void);
++
++#define ENG_KBM_MAX 8
++typedef struct { u64 key; u32 w, h, handle; int failed; char path[1024]; } eng_kbm_file;
++static eng_kbm_file s_kbm[ENG_KBM_MAX];
++static int s_kbm_n, s_kbm_mode = -1;   /* LD_TEX_KBM: 0 never, 1 always, -1 follow the input */
++static pthread_once_t s_kbm_once = PTHREAD_ONCE_INIT;
++
++static void eng_kbm_scan(void)
++{
++    const char* m = getenv("LD_TEX_KBM");
++    if (m && *m == '0') { s_kbm_mode = 0; return; }
++    if (m && *m == '1') s_kbm_mode = 1;
++    char dir[900];
++    const char* e = getenv("LD_TEX_KBM_DIR");
++    if (e && *e) snprintf(dir, sizeof dir, "%s", e);
++    else { e = getenv("LD_TEX_DIR"); snprintf(dir, sizeof dir, "%s/kbm", e && *e ? e : "textures"); }
++    DIR* d = opendir(dir);
++    if (!d) return;
++    for (struct dirent* de; (de = readdir(d)) && s_kbm_n < ENG_KBM_MAX; ) {
++        const char* n = de->d_name;
++        const size_t len = strlen(n);
++        int hex = len > 20 && n[16] == '_' && !strcmp(n + len - 4, ".png");
++        for (int i = 0; hex && i < 16; i++) hex = isxdigit((unsigned char)n[i]) != 0;
++        if (!hex) continue;
++        eng_kbm_file* f = &s_kbm[s_kbm_n];
++        snprintf(f->path, sizeof f->path, "%s/%s", dir, n);
++        int w = 0, h = 0, c = 0;
++        if (!stbi_info(f->path, &w, &h, &c) || w <= 0 || h <= 0) continue;
++        f->key = strtoull(n, NULL, 16);
++        f->w = (u32)w; f->h = (u32)h;
++        s_kbm_n++;
++    }
++    closedir(d);
++    fprintf(stderr, "[rsx engine] %d keyboard / mouse icon atlas(es) in %s\n", s_kbm_n, dir);
++}
++
++int texpack_kbm_want(void)   /* also the game thread (the title text, NOTES fix 92) */
++{
++    pthread_once(&s_kbm_once, eng_kbm_scan);
++    if (!s_kbm_n) return 0;
++    return s_kbm_mode == 1 ? 1 : ps3_host_kbm_active();
++}
++
++/* The D3D12 renderer's texture_content_hash and rsx_tex_pack.c's texpack_key: the keys must match. */
++static u64 eng_kbm_lane_hash(const u8* src, u32 span)
++{
++    u64 hash = 1469598103934665603ull;
++    u32 i = 0;
++    { u64 h0 = hash, h1 = hash ^ 1u, h2 = hash ^ 2u, h3 = hash ^ 3u;
++      for (; i + 32 <= span; i += 32) {
++          u64 w[4];
++          memcpy(w, src + i, sizeof w);
++          h0 = (h0 ^ w[0]) * 1099511628211ull;
++          h1 = (h1 ^ w[1]) * 1099511628211ull;
++          h2 = (h2 ^ w[2]) * 1099511628211ull;
++          h3 = (h3 ^ w[3]) * 1099511628211ull;
++      }
++      hash = (((h0 * 1099511628211ull ^ h1) * 1099511628211ull ^ h2) * 1099511628211ull) ^ h3; }
++    for (; i + 8 <= span; i += 8) {
++        u64 word;
++        memcpy(&word, src + i, sizeof word);
++        hash = (hash ^ word) * 1099511628211ull;
++    }
++    for (; i < span; i++) hash = (hash ^ src[i]) * 1099511628211ull;
++    return hash;
++}
++static u64 eng_kbm_mix(u64 x)
++{
++    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ull;
++    x ^= x >> 27; x *= 0x94D049BB133111EBull;
++    x ^= x >> 31;
++    return x;
++}
++static u64 eng_kbm_key(u64 content, u32 fmt, u32 w, u32 h, u32 remap)
++{
++    u32 base = fmt & 0x9Fu & ~0x40u;
++    if (base == 0x9Eu) base = 0x85u;   /* D8R8G8B8 as A8R8G8B8, ld_tex_base_fmt */
++    const u64 shape = ((u64)(base & 0xFF) << 56) ^ ((u64)(remap & 0xFFFF) << 32) ^
++                      ((u64)(w & 0xFFFF) << 16) ^ (u64)(h & 0xFFFF);
++    const u64 k = eng_kbm_mix(content ^ eng_kbm_mix(shape + 0x9E3779B97F4A7C15ull));
++    return k ? k : 1;
++}
++
++static u32 eng_kbm_upload(eng_kbm_file* f)
++{
++    int w = 0, h = 0, c = 0;
++    unsigned char* px = stbi_load(f->path, &w, &h, &c, 4);
++    if (!px || (u32)w != f->w || (u32)h != f->h) { if (px) stbi_image_free(px); f->failed = 1; return 0; }
++    /* The file holds the colours as sampled: identity crossbar (0xAAE4, in A8R8G8B8 terms). */
++    f->handle = g.be->texture_create(g.be->user, RSX_BE_FMT_R8G8B8A8, f->w, f->h, 1u, 1u, 0xAAE4u, 0x85u);
++    if (f->handle)
++        g.be->texture_upload(g.be->user, f->handle, 0u, 0u, f->w, f->h, px, f->w * 4u, f->h);
++    else
++        f->failed = 1;
++    stbi_image_free(px);
++    return f->handle;
++}
++
++/* What to bind for this cached texture: its icons while they are wanted, else its own handle.
++ * Hashed only when a file of its exact size exists and its content is new. */
++static u32 eng_kbm_handle(eng_texture* e, u32 span)
++{
++    pthread_once(&s_kbm_once, eng_kbm_scan);
++    if (!s_kbm_n || !e->handle) return e->handle;
++    if (e->kbm_hash != e->content_hash) {
++        e->kbm_hash = e->content_hash;
++        e->kbm_file = 0;
++        int sized = 0;
++        for (int i = 0; i < s_kbm_n; i++) sized |= s_kbm[i].w == e->width && s_kbm[i].h == e->height;
++        const u8* src = (sized && !e->cubemap && e->depth <= 1) ? eng_guest_ptr(NULL, e->location, e->offset, span) : NULL;
++        if (src) {
++            const u64 key = eng_kbm_key(eng_kbm_lane_hash(src, span), e->format, e->width, e->height, e->remap);
++            for (int i = 0; i < s_kbm_n; i++)
++                if (s_kbm[i].key == key) e->kbm_file = i + 1;
++            { static int lg = -1; if (lg < 0) lg = getenv("RSX_ENGINE_KBM_LOG") ? 1 : 0;
++              if (lg) fprintf(stderr, "[kbm] %ux%u fmt=0x%02X remap=0x%04X span=%u key=%016llX -> %s\n", e->width, e->height,
++                              e->format, e->remap & 0xFFFFu, span, (unsigned long long)key, e->kbm_file ? "icons" : "no file"); }
++        }
++    }
++    if (!e->kbm_file || !texpack_kbm_want()) return e->handle;
++    eng_kbm_file* f = &s_kbm[e->kbm_file - 1];
++    if (!f->handle && !f->failed) eng_kbm_upload(f);
++    return f->handle ? f->handle : e->handle;
++}
++#else
++static u32 eng_kbm_handle(eng_texture* e, u32 span) { (void)span; return e->handle; }
++#endif
++
+ /* The cache slot for a texture unit's bytes, keyed on where they are and what
+  * the registers say they are. An already-cached entry is re-hashed at most
+  * once per presented frame and re-decoded when the guest changed it, which is
+@@ -1399,7 +1543,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+             }
+         }
+         e->last_use_serial = ++g.texture_use_serial;
+-        return e->handle;
++        return eng_kbm_handle(e, span);
+     }
+ 
+     u32 index;
+@@ -1428,7 +1572,7 @@ static u32 eng_texture_slot(u32 location, u32 offset, u32 fmt, u32 w, u32 h,
+     e.handle = eng_texture_upload(location, offset, fmt, w, h, levels, pitch,
+                                   cube, remap, depth, 0u);
+     if (e.handle && evicted) g.be->texture_release(g.be->user, evicted);
+-    if (e.handle || !evicted) g.textures[index] = e;
++    if (e.handle || !evicted) { g.textures[index] = e; return eng_kbm_handle(&g.textures[index], span); }
+     return e.handle;
+ }
+ 
+@@ -1489,6 +1633,59 @@ static int eng_surface_to_guest(u32 slot)
      return 1;
  }
  
@@ -10230,7 +10690,7 @@ index 8dff6011..dd46b243 100644
  static float* s_depth_rows;
  static u32 s_depth_cap;
  
-@@ -1910,6 +1963,17 @@ static u64 eng_fp_debug_hash(const u8* fp_uc, u32 fp_size)
+@@ -1910,6 +2107,17 @@ static u64 eng_fp_debug_hash(const u8* fp_uc, u32 fp_size)
      return fp_uc && fp_size
          ? rsx_fp_structural_hash(fp_uc, fp_size, 1469598103934665603ull) : 0;
  }
@@ -10248,7 +10708,7 @@ index 8dff6011..dd46b243 100644
  
  static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
                              const rsx_be_render_state* rs,
-@@ -2040,6 +2104,13 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -2040,6 +2248,13 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      }
      if (g.n_pipelines >= ENG_MAX_PIPELINES) return 0;
  
@@ -10262,7 +10722,7 @@ index 8dff6011..dd46b243 100644
      u32 handle = 0;
      int vi = 1, fi = 1;
      u32 nconst = 0;
-@@ -2080,6 +2151,12 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
+@@ -2080,6 +2295,12 @@ static u32 eng_pipeline_get(const rsx_vertex_layout_plan* layout,
      if (vi > 0 && fi > 0)
          handle = g.be->pipeline_create(g.be->user, s_vs_hlsl, s_ps_hlsl, rs,
                                         layout, layout->stride, rt_fmt, rt_count);
@@ -10275,7 +10735,7 @@ index 8dff6011..dd46b243 100644
      const u64 fp_hash = fixed ? 0 : eng_fp_debug_hash(fp_uc, fp_size);
      /* RSX_ENGINE_SHADER_DUMP=<existing dir>: each new pipeline's two programs
       * as <dir>/pipe<handle>.vs.hlsl and .ps.hlsl, the handle being the one
-@@ -3375,6 +3452,7 @@ static void eng_present(u32 buffer_id)
+@@ -3375,6 +3596,7 @@ static void eng_present(u32 buffer_id)
                      i, g.surfaces[i].location, g.surfaces[i].offset,
                      g.surfaces[i].w, g.surfaces[i].h, g.surfaces[i].handle);
      }
@@ -10283,7 +10743,7 @@ index 8dff6011..dd46b243 100644
      pd_present(target);
      g.last_present_surface = target;
      g.be->present(g.be->user, g.surfaces[target].handle);
-@@ -3484,9 +3562,13 @@ void rsx_draw_engine_shutdown(void)
+@@ -3484,9 +3706,13 @@ void rsx_draw_engine_shutdown(void)
      g.be = be;
  }
  
@@ -17622,7 +18082,7 @@ index 2579117..167f9fa 100644
      if (dc.refs) { free(dc.refs); dc.refs = NULL; dc.cap_refs = 0; }
      if (dc.compact_verts) {
 diff --git a/libs/video/rsx_metal_backend.m b/libs/video/rsx_metal_backend.m
-index ad8db0b5..828115b4 100644
+index ad8db0b5..8707a11a 100644
 --- a/libs/video/rsx_metal_backend.m
 +++ b/libs/video/rsx_metal_backend.m
 @@ -54,6 +54,13 @@
@@ -18351,7 +18811,7 @@ index ad8db0b5..828115b4 100644
              [NSApp sendEvent:ev];
          }
 +        if (input) {
-+            hic_tick(input);
++            hic_tick(input, s_window);
 +            if (![s_window isKeyWindow]) hic_focus_lost(input);
 +        }
      }
@@ -18609,10 +19069,10 @@ index 32e8a95..2dad94c 100644
          s_state.title_time = now;
 diff --git a/libs/video/rsx_tex_pack.c b/libs/video/rsx_tex_pack.c
 new file mode 100644
-index 0000000..93e3253
+index 00000000..8b85cdfe
 --- /dev/null
 +++ b/libs/video/rsx_tex_pack.c
-@@ -0,0 +1,797 @@
+@@ -0,0 +1,799 @@
 +/* rsx_tex_pack -- see rsx_tex_pack.h. */
 +#include "rsx_tex_pack.h"
 +
@@ -19400,7 +19860,9 @@ index 0000000..93e3253
 +{ (void)k; (void)f; (void)l; (void)w; (void)h; (void)p; (void)r; (void)m; (void)lo; (void)o; (void)s; (void)n; (void)t; }
 +int texpack_find(uint64_t k) { (void)k; return -1; }
 +int texpack_kbm_find(uint64_t k) { (void)k; return -1; }
++#ifndef __APPLE__   /* macOS: rsx_draw_engine.c, which draws them */
 +int texpack_kbm_want(void) { return 0; }
++#endif
 +int texpack_count(void) { return 0; }
 +const char* texpack_path(int i) { (void)i; return ""; }
 +int texpack_state(int i) { (void)i; return 0; }
@@ -42774,7 +43236,7 @@ index 0000000..8a239ff
 +  ]
 +}
 diff --git a/tools/host_window/host_window.m b/tools/host_window/host_window.m
-index 6a139ac..b745b8d 100644
+index 6a139ac3..ae3369ad 100644
 --- a/tools/host_window/host_window.m
 +++ b/tools/host_window/host_window.m
 @@ -18,6 +18,12 @@
@@ -42844,7 +43306,7 @@ index 6a139ac..b745b8d 100644
 +        dispatch_source_t input_tick = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, mq);
 +        dispatch_source_set_timer(input_tick, dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC),
 +                                  100 * NSEC_PER_MSEC, 20 * NSEC_PER_MSEC);
-+        dispatch_source_set_event_handler(input_tick, ^{ hic_tick(&g.input); });
++        dispatch_source_set_event_handler(input_tick, ^{ hic_tick(&g.input, g.window); });
 +        dispatch_resume(input_tick);
 +
          metal_frame_rate_reset(&g.fps, CACurrentMediaTime());
