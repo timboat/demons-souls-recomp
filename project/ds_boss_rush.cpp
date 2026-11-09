@@ -32,6 +32,11 @@
 #include <sys/stat.h>
 #endif
 
+#ifdef _WIN32
+#define BR_SEP "\\"
+#else
+#define BR_SEP "/"   /* macOS: a backslash would be part of the file's name */
+#endif
 extern "C" unsigned long long ps3_qpc_us(void);
 extern "C" void ps3_overlay_set(int line, const char* text);
 extern "C" void ps3_overlay_image(const void* rgba, int w, int h, float cx, float bottom, float height);
@@ -87,7 +92,7 @@ const std::string& dir()
         std::string d = h && *h ? std::string(h) : std::string(".");
         while (!d.empty() && (d.back() == '\\' || d.back() == '/')) d.pop_back();
         const size_t cut = d.find_last_of("\\/");
-        d = (cut == std::string::npos ? std::string(".") : d.substr(0, cut)) + "\\bossrush";
+        d = (cut == std::string::npos ? std::string(".") : d.substr(0, cut)) + BR_SEP "bossrush";
 #ifdef _WIN32
         (void)_mkdir(d.c_str());
 #else
@@ -147,7 +152,7 @@ std::string fmt(unsigned long long us, bool tenths = true)
 
 void save_state()
 {
-    const std::string p = dir() + "\\state.txt";
+    const std::string p = dir() + BR_SEP "state.txt";
     FILE* f = fopen(p.c_str(), "w");
     if (!f) return;
     fprintf(f, "run_us %llu\nrunning %d\ndone %d\nseg_start %llu\nboss %s\n", now_run_us(), g_running ? 1 : 0,
@@ -158,7 +163,7 @@ void save_state()
 
 void load_state()
 {
-    const std::string p = dir() + "\\state.txt";
+    const std::string p = dir() + BR_SEP "state.txt";
     FILE* f = fopen(p.c_str(), "r");
     if (!f) return;
     char line[256];
@@ -180,7 +185,7 @@ void load_state()
 
 void write_splits(const char* file, bool final)
 {
-    const std::string p = dir() + "\\" + file;
+    const std::string p = dir() + BR_SEP + file;
     FILE* f = fopen(p.c_str(), "w");
     if (!f) return;
     fprintf(f, "Demon's Souls boss rush%s\n", final ? " - results" : " - splits so far");
@@ -202,7 +207,7 @@ bool font_load()
 {
     if (g_font_state) return g_font_state > 0;
     g_font_state = -1;
-    FILE* f = fopen((dir() + "\\timer_font.bin").c_str(), "rb");
+    FILE* f = fopen((dir() + BR_SEP "timer_font.bin").c_str(), "rb");
     if (!f) return false;
     unsigned hdr[3] = {0, 0, 0};
     bool ok = fread(hdr, 4, 3, f) == 3 && hdr[0] == 0x31465242u /* BRF1 */ && hdr[1] < 256 && hdr[2] > 0 && hdr[2] < 512;

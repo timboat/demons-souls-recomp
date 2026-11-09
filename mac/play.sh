@@ -19,6 +19,7 @@
 #                     its libavcodec is found (Homebrew's, or PS3RECOMP_FFMPEG_AVCODEC / _AVUTIL), off
 #                     without it -- the opening movie never ends with no decoder. "brew install ffmpeg"
 #   DES_GAME=game_remaster   run the PC Remaster mod's copy instead of game/
+#   DES_BOSS_RUSH=1   boss rush mode (below); DES_BR_SOULS=2|3|5|10 multiplies the souls enemies give
 #   DES_LOG=1         the runtime's per-event log lines (PS3_VERBOSE=1). Off by default: thousands of
 #                     lines a second from every guest thread through one stderr lock change the game's
 #                     timing (frame drops, hitches) and grew the log by ~50 MB in five minutes
@@ -35,11 +36,25 @@ WIN="$D/port/build_mac/DemonsSoulsRecomp_window"
 [ -x "$BIN" ] && [ -x "$WIN" ] || die "the macOS build is not there yet (port/build_mac). Build it first (docs/MACOS.md)."
 
 DES_GAME=${DES_GAME:-game}
+# DES_BOSS_RUSH=1: boss rush mode, as in PLAY.bat / linux/play.sh -- game_bossrush, made from game/ by
+# tools/make_boss_rush.py (hard links: no extra disk space), its own saves in bossrush/gamedata (your normal
+# saves are never used) and the run timer's files in bossrush/. DES_BR_SOULS=<n> multiplies the souls.
+# DES_BOSS_RUSH_DIR moves bossrush/ (a test run).
+if [ "${DES_BOSS_RUSH:-}" = 1 ]; then
+  DES_GAME=game_bossrush
+  export DES_BOSS_RUSH=1 DES_BOSS_RUSH_DIR="${DES_BOSS_RUSH_DIR:-$D/bossrush}"
+  export PS3_GAMEDATA_ROOT="$DES_BOSS_RUSH_DIR/gamedata"
+  mkdir -p "$PS3_GAMEDATA_ROOT"
+  [ -x "$D/.venv/bin/python" ] || die "Boss rush needs the setup's Python (.venv): run mac/rebuild.sh venv."
+  "$D/.venv/bin/python" "$D/tools/make_boss_rush.py" ||
+    die "Boss rush: game_bossrush could not be made from your game files (the messages above say why)."
+fi
 EBOOT="$D/$DES_GAME/PS3_GAME/USRDIR/EBOOT.elf"
 [ -f "$EBOOT" ] || die "no $DES_GAME/PS3_GAME/USRDIR/EBOOT.elf. Run the setup steps first (docs/MACOS.md)."
 
 export PS3_TITLE="Demon's Souls (ps3recomp)"
 [ "$DES_GAME" = game_remaster ] && PS3_TITLE="Demon's Souls (ps3recomp) - PC Remaster mod"
+[ "${DES_BOSS_RUSH:-}" = 1 ] && PS3_TITLE="Demon's Souls (ps3recomp) - Boss rush"
 LOGS=${DES_LOG_DIR:-$D/logs}
 # (a test run moves these, and PS3_GAMEDATA_ROOT for the saves, into its own folder)
 export PS3_HDD0_ROOT="${PS3_HDD0_ROOT:-$D/hdd0}" PS3_HDD1_ROOT="${PS3_HDD1_ROOT:-$D/hdd1}" PS3_DEV_FLASH="${PS3_DEV_FLASH:-$D/no_flash}"

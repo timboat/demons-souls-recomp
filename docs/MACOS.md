@@ -89,7 +89,7 @@ mac/play.sh
 ```
 
 The launcher is the Mac counterpart of the Windows one (`mac/launcher_native/`, plain AppKit): frame rate,
-window size, which copy of the game, movies, god mode, skip the intro, input, the character name, extra
+window size, which copy of the game (Boss rush too), movies, god mode, skip the intro, input, the character name, extra
 `NAME=value` settings, PLAY, and the same four buttons (check for updates, report a problem, controls,
 folders). It keeps the choices in `launcher.ini` in the port's folder, in the Windows launcher's format, and
 starts `mac/play.sh` with them. Its Controls window changes the keyboard and mouse keys; the game's button
@@ -110,6 +110,7 @@ Settings for `mac/play.sh` on its own, as environment variables:
 | `DES_SIZE=<w>x<h>` | the window's size (default 1280x720) |
 | `DES_LOG_DIR=<dir>` | where the two logs go (default `logs/`) |
 | `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
+| `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls |
 | `DES_GOD=1`, `DES_SKIP_INTRO=1` | god mode from the start; straight to PRESS START |
 | `RSX_ENGINE_VCACHE=0` | turns off the decoded-vertex cache (NOTES fix 136), to rule it out |
 

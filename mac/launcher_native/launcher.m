@@ -105,13 +105,17 @@ static BOOL find_root(void) {
 // fps keeps the Windows launcher's numbers (0 Auto, 1 30, 2 50, 3 60, 4 Unlimited, 5 Custom); the Mac
 // build has 60 and 30, so everything but 1 is 60 here and is left as it was in the file unless changed.
 enum { FPS_30 = 1, FPS_60 = 3 };
-static NSString* const GAME_DIRS[3] = {@"game", @"game_remaster", @"game_mod"};
+// Game choices: the folder each plays (Boss rush: mac/play.sh makes game_bossrush from game, so game must be there)
+static NSString* const GAME_DIRS[4] = {@"game", @"game_remaster", @"game_mod", @"game"};
+enum { GAME_BOSS_RUSH = 3, GAME_COUNT = 4 };
+static const int BR_SOULS[] = {1, 2, 3, 5, 10};   // DES_BR_SOULS: the boss rush souls multiplier
+enum { BR_SOULS_N = 5 };
 static NSString* const SIZES[] = {@"1280x720", @"1600x900", @"1920x1080", @"2560x1440", @"fit"};
 enum { N_SIZES = 5 };
 static NSString* const INPUT_MODES[] = {@"both", @"controller", @"keyboard"};
 
 typedef struct {
-    int fps, size, game, input;
+    int fps, size, game, input, br_souls;
     BOOL movies, god, skip_intro, log;
 } Settings;
 static Settings g_set;
@@ -219,7 +223,8 @@ static void load_settings(void) {
     g_ini = [Ini load:g_ini_path];
     Settings* s = &g_set;
     s->fps = ini_int(@"fps", FPS_60) == FPS_30 ? FPS_30 : FPS_60;
-    s->game = MAX(0, MIN(2, ini_int(@"game", 0)));
+    s->game = MAX(0, MIN(GAME_COUNT - 1, ini_int(@"game", 0)));
+    s->br_souls = MAX(1, MIN(100, ini_int(@"boss_rush_souls", 1)));
     s->movies = ini_int(@"movies", 1) != 0;
     s->god = ini_int(@"god_mode", 0) != 0;
     s->skip_intro = ini_int(@"skip_intro", 0) != 0;
@@ -244,6 +249,7 @@ static BOOL save_settings(void) {
     int was = ini_int(@"fps", FPS_60);
     if (s->fps == FPS_30 || was == FPS_30 || ![g_ini get:@"launcher" key:@"fps"]) ini_put_int(@"fps", s->fps);
     ini_put_int(@"game", s->game);
+    ini_put_int(@"boss_rush_souls", s->br_souls);
     ini_put_int(@"movies", s->movies);
     ini_put_int(@"god_mode", s->god);
     ini_put_int(@"skip_intro", s->skip_intro);
@@ -330,7 +336,15 @@ static NSDictionary<NSString*, NSString*>* game_env(const Settings* s) {
     NSMutableDictionary<NSString*, NSString*>* e = [NSProcessInfo.processInfo.environment mutableCopy];
     e[@"DES_FPS"] = s->fps == FPS_30 ? @"30" : @"60";
     e[@"DES_SIZE"] = [SIZES[s->size] isEqualToString:@"fit"] ? fit_size() : SIZES[s->size];
-    e[@"DES_GAME"] = GAME_DIRS[s->game];
+    if (s->game == GAME_BOSS_RUSH) {   // mac/play.sh picks game_bossrush and its own saves (bossrush/)
+        [e removeObjectForKey:@"DES_GAME"];
+        e[@"DES_BOSS_RUSH"] = @"1";
+        if (s->br_souls > 1) e[@"DES_BR_SOULS"] = [NSString stringWithFormat:@"%d", s->br_souls]; else [e removeObjectForKey:@"DES_BR_SOULS"];
+    } else {
+        e[@"DES_GAME"] = GAME_DIRS[s->game];
+        [e removeObjectForKey:@"DES_BOSS_RUSH"];
+        [e removeObjectForKey:@"DES_BR_SOULS"];
+    }
     if (s->movies) [e removeObjectForKey:@"DES_MOVIES"]; else e[@"DES_MOVIES"] = @"0";   // on = when FFmpeg is found
     if (s->god) e[@"DES_GOD"] = @"1"; else [e removeObjectForKey:@"DES_GOD"];
     if (s->skip_intro) e[@"DES_SKIP_INTRO"] = @"1"; else [e removeObjectForKey:@"DES_SKIP_INTRO"];
@@ -491,7 +505,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 
 @interface App : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate>
 @property NSWindow* window;
-@property NSPopUpButton* fps, *size, *input;
+@property NSPopUpButton* fps, *size, *input, *brSouls;
 @property NSTextField* fpsHint, *status, *name, *extra, *keysStatus;
 @property NSMutableArray<NSButton*>* games;
 @property NSButton* movies, *god, *skipIntro, *log, *play, *update, *folders;
@@ -568,20 +582,27 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 
     [self label:@"Game" x:L y:y + 3 w:92 h:20 in:v];
     _games = [NSMutableArray array];
-    NSArray* gt = @[@"Normal", @"PC Remaster mod", @"My models"];
+    NSArray* gt = @[@"Normal", @"PC Remaster", @"My models", @"Boss rush"];
     NSArray* gtip = @[@"Your game as on the disc.",
                       @"The \"Demon's Souls PC Remaster\" mod by fromsoftserve (game_remaster). Install it with tools/install_remaster.py, see README.md.",
-                      @"The copy with your imported models (game_mod, made by tools/flver_tool.py import)."];
-    const CGFloat gx[] = {X, X + 82, X + 222}, gw[] = {80, 138, 110};
-    for (int g = 0; g < 3; g++) {
+                      @"The copy with your imported models (game_mod, made by tools/flver_tool.py import).",
+                      (@"Boss rush mode: a new character starts in the Nexus with 3,000 souls; each archstone takes you to its "
+                       @"world's next boss, a timer runs from the first boss fog to King Allant. Its own saves (bossrush/).")];
+    const CGFloat gx[] = {X - 2, X + 66, X + 162, X + 248}, gw[] = {68, 96, 86, 86};
+    for (int g = 0; g < GAME_COUNT; g++) {
         NSButton* b = [NSButton radioButtonWithTitle:gt[g] target:self action:@selector(gameChosen:)];
         b.frame = NSMakeRect(gx[g], y, gw[g], 22);
         b.tag = g;
+        b.font = [NSFont systemFontOfSize:12];
         b.toolTip = gtip[g];
         [v addSubview:b];
         [_games addObject:b];
     }
-    y += 34;
+    y += 30;
+    [self label:@"Boss rush souls" x:L y:y + 4 w:96 h:20 in:v].font = [NSFont systemFontOfSize:12];
+    _brSouls = [self popup:@[@"1x (the game's own)", @"2x", @"3x", @"5x", @"10x"] x:X y:y w:160
+                       tip:@"Boss rush only: every enemy and boss gives this many times its souls. The timer shows it when it is not 1x, for videos and runs." in:v];
+    y += 36;
 
     const CGFloat C2 = L + W / 2;
     _movies = [self check:@"Play movies" x:L y:y w:200
@@ -657,10 +678,14 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     [_fps selectItemAtIndex:s->fps == FPS_30 ? 1 : 0];
     [_size selectItemAtIndex:s->size];
     int game = game_present(s->game) ? s->game : 0;
-    for (int g = 0; g < 3; g++) {
+    for (int g = 0; g < GAME_COUNT; g++) {
         _games[g].state = g == game ? NSControlStateValueOn : NSControlStateValueOff;
         if (g) _games[g].enabled = game_present(g);
     }
+    int sel = 0;
+    for (int i = 0; i < BR_SOULS_N; i++) if (BR_SOULS[i] <= s->br_souls) sel = i;
+    [_brSouls selectItemAtIndex:sel];
+    _brSouls.enabled = game == GAME_BOSS_RUSH;
     _movies.state = s->movies;
     _god.state = s->god;
     _skipIntro.state = s->skip_intro;
@@ -674,8 +699,9 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     Settings* s = &g_set;
     s->fps = _fps.indexOfSelectedItem == 1 ? FPS_30 : FPS_60;
     s->size = (int)_size.indexOfSelectedItem;
-    for (int g = 0; g < 3; g++)
+    for (int g = 0; g < GAME_COUNT; g++)
         if (_games[g].state == NSControlStateValueOn) s->game = g;
+    s->br_souls = BR_SOULS[MAX(0, MIN(BR_SOULS_N - 1, (int)_brSouls.indexOfSelectedItem))];
     s->movies = _movies.state == NSControlStateValueOn;
     s->god = _god.state == NSControlStateValueOn;
     s->skip_intro = _skipIntro.state == NSControlStateValueOn;
@@ -687,6 +713,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 - (void)changed:(id)sender { [self updateHint]; [self readControls]; save_settings(); }
 - (void)gameChosen:(NSButton*)sender {
     for (NSButton* b in _games) b.state = b == sender ? NSControlStateValueOn : NSControlStateValueOff;
+    _brSouls.enabled = sender.tag == GAME_BOSS_RUSH;
     [self changed:sender];
 }
 - (void)controlTextDidEndEditing:(NSNotification*)n { [self readControls]; save_settings(); }
@@ -738,7 +765,8 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     if (!game_present(g_set.game)) {
         NSArray* how = @[@"The game files are not in the game folder. See docs/MACOS.md (mac/install.sh).",
                          @"The PC Remaster mod is not installed (game_remaster). See \"Optional: PC Remaster mod\" in README.md.",
-                         @"No models imported yet (game_mod). See models/README.txt."];
+                         @"No models imported yet (game_mod). See models/README.txt.",
+                         @"The game files are not in the game folder. See docs/MACOS.md (mac/install.sh)."];
         [self message:how[g_set.game] info:nil];
         return NO;
     }
@@ -809,7 +837,8 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     NSMenu* m = [NSMenu new];
     const char* gd = getenv("PS3_GAMEDATA_ROOT");
     NSString* saves = [(gd && *gd) ? @(gd) : at(@"gamedata") stringByAppendingPathComponent:@"dev_hdd0/home/00000001/savedata"];
-    NSArray* items = @[@[@"Saves", saves], @[@"Logs of the last run", log_dir()], @[@"-", @""],
+    NSArray* items = @[@[@"Saves", saves], @[@"Boss rush: saves, splits and results (bossrush)", at(@"bossrush")],
+                       @[@"Logs of the last run", log_dir()], @[@"-", @""],
                        @[@"Keyboard and mouse button icons (textures/kbm)", at(@"textures/kbm")], @[@"-", @""], @[@"The port's folder", g_root]];
     for (NSArray* it in items) {
         if ([it[0] isEqualToString:@"-"]) { [m addItem:NSMenuItem.separatorItem]; continue; }

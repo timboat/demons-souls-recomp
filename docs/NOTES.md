@@ -3216,6 +3216,37 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - RSX_ENGINE_VCACHE=0 turns it off; RSX_ENGINE_VCACHE_STATS=1 logs the counters every 300 frames.
     - Left: `gpu wait (flush)` ~5 ms a frame and frame pacing. spu_async still spends much of its busy time in mach_absolute_time and
       _tlv_get_addr (SPU runtime, not changed here).
+137. **Boss rush on macOS (2026-11-09, MacBook M2 Pro; local branch `boss-rush-mac`, not for the public repo yet):**
+    - The private `boss-rush` branch (fix 100) was 26 commits behind main, and git could not merge the two patch
+      files as text (145 conflicts in ps3recomp-local.patch, 2 in lifted-code.patch, most of them line endings).
+      Merged at source level instead: for rsx_live_draw.c and the five lifted files boss rush changes
+      (ppu_recomp_011, 018, 040, 049, 070), three copies -- the code with the patch as it was at the branch point,
+      with main's patch and with boss rush's -- went through `git merge-file` (no conflicts), and only those patch
+      sections were regenerated from the result. Checked: the new lifted patch on a pristine copy of the lifted code
+      gives exactly the merged files and leaves every other file as main's patch does; the new runtime patch on
+      ps3recomp's commit gives exactly the files on disk, and applies under core.autocrlf false / true / input.
+      The rsx_live_draw.c section is regrouped by this (same resulting file, different hunks), so the main PC should
+      make its own merge for the release rather than take this one. Not built or run on Windows or Linux.
+    - `mac/play.sh` takes DES_BOSS_RUSH=1 as PLAY.bat does (game_bossrush from tools/make_boss_rush.py, saves in
+      bossrush/gamedata, DES_BR_SOULS); DES_BOSS_RUSH_DIR moves bossrush/ for a test run. make_boss_rush.py runs
+      unchanged on the Mac game files (`--check` ok).
+    - project/ds_boss_rush.cpp built its file names with a backslash, which on macOS is part of the name (the font
+      was looked for as `bossrush\timer_font.bin`, the state written to such a file): BR_SEP, "\\" on Windows and
+      "/" elsewhere. Windows' strings are unchanged.
+    - The timer was D3D12 only. rsx_metal_backend.m now has ps3_overlay_image (the stub in rsx_live_draw.c's
+      non-Windows part is off under __APPLE__): the picture is kept under a lock, each new one gets a texture of its
+      own (a frame still on the GPU keeps the one it was encoded with), and the present's pass draws it last,
+      premultiplied alpha, linear, in a viewport + scissor at the same place as on Windows (centre cx, bottom edge,
+      height as fractions of the target). ps3_overlay_set (the 5x7 text fallback without the font file) stays a
+      no-op on the Mac.
+    - DemonsSoulsLauncher.app: Game: Boss rush and Boss rush souls (launcher.ini game=3, boss_rush_souls, as the
+      Windows launcher), and the bossrush folder in Folders.
+    - Checked (sandbox: DES_BOSS_RUSH_DIR, the HDD folders and the logs in a scratch folder, a copy of a normal
+      save, scripted load): "[bossrush] in game: timer shown", "timer font: 71 letters, 64 px", "3000 souls queued",
+      "+3000 souls (3539 -> 6539)", state.txt written in the sandbox's bossrush folder; the presented picture
+      (a temporary capture of the present's target, removed again) shows "0:00.0" and "Souls x2" at the bottom
+      centre in the game's font. Not tested: a new character's start in the Nexus, the archstone "Fight <boss>?"
+      prompts, a boss fight, splits and results, the pause on loading screens and cutscenes.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
