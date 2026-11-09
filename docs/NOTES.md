@@ -2678,10 +2678,32 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       calls ds_toc_check only when it matches none, so the report is unchanged.
     - A/B with fix 123 (Latria 4-2 uncapped, 3 each, rotating): 67.4 / 67.8 / 67.1 -> 69.0 / 68.7 / 68.9 fps (+2.1%).
     - Review of 122-124 (3 agents, one per change, adversarial verify): no findings.
-    - Tried and dropped: moving ps3_indirect_call's PPU_CSCHECK / PS3_ICALL_GATE half out of line (its 400-byte
-      buffer gives every guest function-pointer call a 0x268-byte frame and a stack cookie) was 2.8% SLOWER
-      (69.4 / 69.2 / 69.4 -> 67.3 / 67.9 / 66.9 fps), cause not found.
+    - Tried and dropped (it was going to be fix 125; the number stays unused): moving ps3_indirect_call's
+      PPU_CSCHECK / PS3_ICALL_GATE half out of line (its 400-byte buffer gives every guest function-pointer call
+      a 0x268-byte frame and a stack cookie) was 2.8% SLOWER (69.4 / 69.2 / 69.4 -> 67.3 / 67.9 / 66.9 fps), cause
+      not found.
     - Tour (7 stops, fixes 122-124): every stop 58.9-60 mean, no aborts or halts.
+126. **Host threads reused for short SPURS tasks (2026-11-09, 5800X):**
+    - Demon's Souls starts ~1000-1500 short SPURS tasks a second (taskset 0x179ED800 tasks 0-3 running images 10 and
+      7, taskset 0x18394800 images 3 / 4 / 6), and spu_workload_dispatch_async gave each a new host thread:
+      CreateThread with a 256 MB stack reservation, then thread start and exit in every loaded DLL (the graphics
+      driver's included). In test logs these are the "dispatch HIT (async) ... spawning thread" lines.
+    - Fix (runtime/spu/spu_workload.c, Windows): a finished task thread parks for up to 2 s on an idle list and runs
+      the next task. A task never waits for a thread: with none idle, the dispatcher creates one as before, so the
+      thread count is the peak number of tasks at once and tasks that wait on each other cannot starve. Between
+      tasks the thread does what its exit did (the forget-range calls) and puts back the per-run thread-locals a new
+      thread starts with (spu_async_task_tls_reset; spu_channels_task_tls_reset clears the DMA repeat watchdog and its
+      log counts -- moved to file scope in spu_dma.h -- the cri task's EXIT count and fix 111's flag). A thread a deep
+      task left with more than 16 MB of committed stack exits instead. SPU_TASK_POOL=0 = a thread per task.
+    - Audit of every thread-local on the task path (3 agents + adversarial verify) found the watchdog and the cri
+      count. Review of the code (2 lenses + verify) found a real race in the first version: a dispatcher taking a
+      thread just as its 2 s wait timed out left a signal on the event, and that thread could later exit while
+      still listed. Fixed: the not-listed path always consumes the signal; a wake without a job aborts.
+    - A/B at Latria 4-2 uncapped (same exe, SPU_TASK_POOL=0 / 1, 3 each): 67.7 / 69.1 / 68.2 -> 70.5 / 71.3 / 71.1 fps
+      (+3.9%); process CPU 488% -> 443%. Fixed build, 2 each: 68.7 / 69.4 -> 72.1 / 71.8.
+    - Tour (7 stops): every stop 59.2-60 mean, no aborts or halts. Boletaria 1-1 (load-in, walk, turn): 59.9 fps, p99 19.1 ms, worst frame 49.9 ms (fix 124 build: p99 19.7, worst 112 ms).
+    - Not changed: the perf log's per-thread CPU table now lists "spu job" pool threads (short threads were never
+      seen), so its numbers do not compare directly with older logs; SPU_TASK_POOL=0 gives the old picture.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
