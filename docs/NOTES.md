@@ -2585,6 +2585,44 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Review (2 agents + critic): no output change, race or build break. Noted: like the existing non-live fast
       path, the run reads FIFO words from guest memory directly, so a PPU read-watch on FIFO addresses
       (vm_read32's hooks) no longer sees them.
+118. **Render thread: per-draw D3D12 state calls that repeat the last draw's are skipped (2026-11-08, 5800X + RTX 3070):**
+    - sink_end_impl recorded ~15 state calls on every draw (render targets, descriptor heaps, PSO, root signature,
+      sampler table, viewport, scissor, stencil ref, topology), most of them setting what the list already held, and
+      decoded the surface registers up to four times plus a full decode_render_state for two zeta-counter bits.
+    - Fix (libs/video/rsx_live_draw.c): g.gs remembers what sink_end_impl last recorded on g.list; a call that would
+      set the same value is skipped (render targets compared by RTV/DSV handle AND resource pointer -- a recreated
+      surface or zeta gets a new resource, and the old one is only released after a flush, so a pointer cannot be
+      reused while g.gs holds it). g.gs is dropped when g.fence_value changes (every list Reset follows a fence bump)
+      or g.gfx_epoch does -- bumped by ld_downsample (guest blits), ld_scaled_blit, zdepth_snapshot and zdepth_argb,
+      the only other recorders of graphics or compute state; the present path's ld_downsample_to /
+      ld_present_bilinear are always followed by the present flush (not edited: presentation is the other machine's
+      area). CBV b0/b4 and tables 1/3 stay unconditional (fresh every draw). One surface decode per draw; the zeta
+      counters read the two registers (with LD_NO_DEPTH) directly. LD_STATE_ELIDE=0 = every call, as before.
+    - A/B on one exe at the 1-1 arrival (LD_STATE_ELIDE=0 / on, 3 each): render CPU 10.6 / 10.3 / 10.3 -> 10.2 / 10.2 /
+      10.3 ms/frame -- small: the driver already filters most repeated state.
+    - Review (2 agents + critic): no output change, race or build break; every recorder of state on g.list and every
+      list Reset checked. Noted: with a debug layer / PIX the recorded setter count drops.
+119. **Latria 4-2 uncapped 63.4 -> 65.4 fps on a 5800X: the SPU dispatcher's plain DMAs skip the MFC engine's general path (2026-11-08, 5800X + RTX 3070):**
+    - Every plain DMA of lifted SPU code (fix 113: spu_wrch_mfc_dma) still went through mfc_channel_write's switch,
+      mfc_submit and mfc_do_transfer: ~20 lazy getenv / diagnostic tests, title hacks, the malformed and EA-commit
+      checks, a 5-argument out-of-line call with a large frame. At Latria 4-2 the dispatcher (~4M DMAs and tag updates
+      a second) spent ~15% of its time there.
+    - Fix (runtime/spu/spu_dma.h, spu_channels.c): four blocks move verbatim into static inline helpers --
+      mfc_get_ls_watch, mfc_put_coherent (the reserved-line copy and notify), mfc_put_sync_watch (its log cap) and
+      mfc_repeat_watch (mfc_submit's repeat watchdog with its thread-local and static state) -- so the old path and the
+      new one run the same code and share the same objects. mfc_submit_lean handles a plain GET (0x40) or PUT (0x20)
+      outside every special case (DMA diagnostics on, policy-module trace, the YDKJ cri-chain pair, malformed,
+      EA < 0x10000, outside LS, 368-byte GETs whose EA feeds the DSP-image log, the wws-batch probe, a PUT into the
+      POISON region, an EA page not yet marked committed) with exactly mfc_submit's and mfc_do_transfer's remaining
+      statements in order. spu_wrch_mfc_dma uses it unless SPU_MFC_LEAN=0, any of the DMA-related diagnostic
+      variables is set, the barrier sync watch is armed, SPU_LOCKGUARD is on or an LS watch exists;
+      spu_wrch_mfc_tagupd likewise sets the tag status directly (mfc_tag_wait) instead of mfc_channel_write.
+    - A/B on one exe at Latria 4-2 uncapped (SPU_MFC_LEAN=0 / on, alternating, 3 each): 63.5 / 63.7 / 63.1 -> 64.6 /
+      65.8 / 65.7 fps, p99 21.7-22.0 -> 20.0-20.6 ms. Tour (with fix 118): every stop 59.3-60 mean, no aborts or halts.
+    - Review (2 agents + critic): no divergence, race or build break; the moved blocks are byte-identical and their
+      statics stay one object per TU. Noted: the lean path starts after the first exact transfers settle the LS-watch
+      count and the SPU_LOCKGUARD gate; with SPU_LOCK_SITES the PUT path's lock sites may be attributed to
+      mfc_put_coherent.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
