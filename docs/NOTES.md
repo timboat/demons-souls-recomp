@@ -2751,6 +2751,19 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       boot watchdog (8 s / 15 s only), the per-thread CPU sampler (holds no lock). 7 of those 8 runs had no frame
       over 60 ms (one had four of 40-56 ms on the dragon fly-over stretch, with no single hot path); the morning's
       runs had 2-4 each -- intermittent, still open.
+130. **Logs: per-event lines capped (2026-11-09):**
+    - PLAY.bat sends stdout / stderr to logs\last_run_out.txt / last_run_err.txt, and a redirected stderr makes
+      ps3_log_verbose() true, so every per-event line printed: a 5-minute 1-1 session wrote ~119 MB of stderr
+      ([WAIT] event_queue_receive 450k lines, the three per-task lines of every async SPU task ~230k each, port
+      sends, semaphore waits, SPURS job pairs) and ~41 MB of stdout ([cellSpurs] CreateTask / task attribute /
+      signal / job-chain lines, some printed even on a console) -- roughly 1.9 GB an hour of play.
+    - Fix (runtime/ps3_log.h, sys_event.c, sys_semaphore.c, spu_workload.c, libs/spurs/cellSpurs.c): ps3_log_hot
+      (the verbose-only lines) and ps3_log_capped (lines that printed always) let each call site print its first
+      PS3_LOG_HOT_FIRST (200) lines, then nothing; PS3_VERBOSE=2 = every line, as before. Milestone and error lines
+      are untouched, so REPORT.bat's head / tail / notable lines keep what they had.
+    - Measured: a 5-minute 1-1 session 0.8 MB stderr + 0.4 MB stdout (was ~119 + ~41 MB); the 10-minute tour 1.4 + 0.8 MB.
+      Latria 4-2 uncapped, same exe, PS3_VERBOSE=2 vs default: 71.6 / 70.8 / 70.9 -> 71.7 / 71.0 / 71.8 fps.
+    - Tour (7 stops): every stop 59.9-60 mean, no aborts or halts.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
