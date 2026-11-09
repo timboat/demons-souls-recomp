@@ -2736,6 +2736,21 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       After the load-in (146-290 s): off 9 / 14 frames over 60 ms (worst 167 / 220 ms); this version 3 / 2 (worst
       94 / 75 ms) with no render-thread pipeline wait after 146 s -- what is left is not a pipeline build.
     - Tour (7 stops): every stop 59.1-60 mean, no aborts or halts.
+129. **Slow GPU submits and fence waits in the perf log; what the last 1-1 stalls are not (2026-11-09, 5800X):**
+    - After fix 128, warm 1-1 runs still had 0-4 whole-frame stalls (60-190 ms) on the walk, with no perf-log line
+      from any thread during the gap and the render thread leaving rsx_live_draw_present -> ld_kick_now.
+    - Diagnostic (libs/video/rsx_live_draw.c, always on, a QPC read per submit): "ecl k|f <ms> vram <use>/<budget>
+      sys <use>/<budget>" for an ExecuteCommandLists of 10 ms or more (kick / flush) and "fwait p|f <ms> ..." for a
+      fence wait of 30 ms or more, with the adapter's memory use and budget in MB (IDXGIAdapter3, now fetched in
+      every build). WDDM makes a list's resources resident inside ExecuteCommandLists, so a long one near budget is
+      paging. The notes also land in players' F8 recordings (REPORT.bat).
+    - Findings: in 8 instrumented warm 1-1 runs not one slow submit or fence wait was logged; Present and the GPU
+      wait in the LD_PRESENT_LOG lines stayed under 3 ms through the stalls. An external 1 ms heartbeat process
+      (scratchpad hb.exe) never stalled while the game did, so it is not the machine (drivers, power states).
+      Not the cause either: logging (PS3_VERBOSE), the stack sampler (DES_PERF_STACKS=0 runs stall the same), the
+      boot watchdog (8 s / 15 s only), the per-thread CPU sampler (holds no lock). 7 of those 8 runs had no frame
+      over 60 ms (one had four of 40-56 ms on the dragon fly-over stretch, with no single hot path); the morning's
+      runs had 2-4 each -- intermittent, still open.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
