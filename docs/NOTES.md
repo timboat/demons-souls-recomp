@@ -2623,6 +2623,24 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       statics stay one object per TU. Noted: the lean path starts after the first exact transfers settle the LS-watch
       count and the SPU_LOCKGUARD gate; with SPU_LOCK_SITES the PUT path's lock sites may be attributed to
       mfc_put_coherent.
+120. **Latria 4-2 uncapped 65.7 -> 67.5 fps on a 5800X: GETLLAR reads the reserved line once (2026-11-08):**
+    - An instruction-level profile of the dispatcher (llvm-objdump of the exact exe against its RIP samples) put
+      spu_wrch_mfc_getllar at 11.8% + spu_coh_reserve_fast 3.5%, and showed two things in it:
+      - the taskset-down memo hit (fix 114) costs ~3.6%: under clang-cl every extern thread-local access carries an
+        on-demand TLS guard and its own TLS-base chain, five of them per GETLLAR;
+      - the snapshot copy `memcpy(ctx->resv_line, ls, 128)` was compiled as a SECOND read of guest memory (clang
+        forwarded it through the first copy), on both the lock-free and the locked path -- the stale-LS / fresh-
+        snapshot window the comment above the copy describes, back in the binary.
+    - Fix (runtime/spu/spu_channels.c, spu_workload.c, spu_context.h):
+      - the line is read once, with volatile 16-byte vector loads, and each 16 bytes is stored to LS and to the
+        snapshot from the same register (checked in the disassembly: 8 loads, 16 stores, no memcpy);
+      - the memo is one thread-local struct (struct spu_ts_memo), so a lookup is one TLS access;
+      - the [spu-spin] counter is one thread-local struct and its report is a cold function (same text, same point).
+    - A/B at Latria 4-2 uncapped (fix 119 vs this, alternating, 3 each): 64.6 / 66.5 / 66.1 -> 66.5 / 67.9 / 68.1 fps.
+      Tour: every stop 59.2-60 mean, no aborts or halts.
+    - Review (2 agents + critic, with the disassembly): no divergence, race or build break; only spu_wrch and
+      spu_wrch_mfc_getllar contain the copy, both with one read. Not done: building C with /Zc:tlsGuards- (would remove
+      the TLS guards everywhere; needs its own review).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
