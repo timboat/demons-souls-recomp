@@ -2641,6 +2641,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Review (2 agents + critic, with the disassembly): no divergence, race or build break; only spu_wrch and
       spu_wrch_mfc_getllar contain the copy, both with one read. Not done: building C with /Zc:tlsGuards- (would remove
       the TLS guards everywhere; needs its own review).
+121. **Two SPU helpers without store-forwarding stalls (2026-11-08, 5800X):**
+    - The instruction-level profile of fix 120 showed failed store-to-load forwards in commands 7 / 8 (spu_cwx: the
+      scalar form stored the 16-byte base pattern, then one word over it, and the shufb that follows read all 16) and
+      wherever a channel read returns a preferred-slot value (spu_make_preferred_u32: memset 16, store 4).
+    - Fix (runtime/spu/spu_helpers.h, spu_context.h): spu_cwx(a, b) is spu_cwd(a, b's word) -- the same position, so
+      it takes cwd's SSE4.1 / NEON form; spu_make_preferred_u32 builds the value with one movd on x86-64. Bit-identical.
+      spu_cwd_ref (the scalar builds) now adds unsigned: cwx passes a full register, and a signed add could overflow.
+    - A/B at Latria 4-2 uncapped (fix 120 vs this, 3 each): 67.4 / 68.4 / 67.9 -> 68.4 / 68.3 / 68.2 fps (small).
+      Tour: every stop 59.2-60 mean, no aborts or halts.
+    - Review (2 agents): bit-identical on every build branch; the scalar-path signed overflow found there is fixed.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

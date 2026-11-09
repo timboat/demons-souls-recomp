@@ -21087,10 +21087,20 @@ index ea2e835..1abcb02 100644
  /* Scoped host waiters for real writes to a guest 128-byte line. Add, remove,
   * and callbacks all run under the lock-line lock. A watch remains caller-owned
 diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
-index c5ccbec..7c6c61e 100644
+index c5ccbec..8aceb65 100644
 --- a/runtime/spu/spu_context.h
 +++ b/runtime/spu/spu_context.h
-@@ -425,6 +425,11 @@ typedef struct spu_context {
+@@ -16,6 +16,9 @@
+ #include <string.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#if defined(__x86_64__) || defined(_M_X64)
++#include <emmintrin.h>   /* fix 121: spu_make_preferred_u32 */
++#endif
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -425,6 +428,11 @@ typedef struct spu_context {
       * spu_coh_reserve_fast). Written under that lock, read by the context's
       * own thread. */
      int coh_listed;
@@ -21102,7 +21112,27 @@ index c5ccbec..7c6c61e 100644
  } spu_context;
  
  /* event_status is written from more than one host thread: the SPU's own
-@@ -860,6 +865,9 @@ static inline int spu_channel_has_data(const spu_channel* ch)
+@@ -774,10 +782,19 @@ static inline uint64_t spu_preferred_u64(const u128* reg)
+ /* Create a register with a value splatted to the preferred word slot */
+ static inline u128 spu_make_preferred_u32(uint32_t val)
+ {
++#if defined(__x86_64__) || defined(_M_X64)
++    /* fix 121: built in a register (movd) and stored once; zeroing 16 bytes and then storing 4 over them made the
++     * next 16-byte read of the register wait on a failed store-to-load forward. Same value. */
++    const __m128i v = _mm_cvtsi32_si128((int)val);
++    u128 r;
++    memcpy(&r, &v, sizeof(r));
++    return r;
++#else
+     u128 r;
+     memset(&r, 0, sizeof(r));
+     r._u32[0] = val;
+     return r;
++#endif
+ }
+ 
+ /* ---------------------------------------------------------------------------
+@@ -860,6 +877,9 @@ static inline int spu_channel_has_data(const spu_channel* ch)
  #else
  #  define SPU_THREAD_LOCAL __thread
  #endif
@@ -22556,7 +22586,7 @@ index 8c4ccaa..3a8dd05 100644
   * Tag group synchronization
   * -----------------------------------------------------------------------*/
 diff --git a/runtime/spu/spu_helpers.h b/runtime/spu/spu_helpers.h
-index f04fda6..f45dd29 100644
+index f04fda6..7603440 100644
 --- a/runtime/spu/spu_helpers.h
 +++ b/runtime/spu/spu_helpers.h
 @@ -465,7 +465,10 @@ static inline u128 spu_selb(u128 a, u128 b, u128 c) { return spu_selb_ref(a, b,
@@ -22655,7 +22685,28 @@ index f04fda6..f45dd29 100644
  SPU__X8_INLINE u128 spu_fma(u128 a, u128 b, u128 c)  { return spu__x8_fma(a, b, c, 0, 0); }            /* a*b + c */
  SPU__X8_INLINE u128 spu_fms(u128 a, u128 b, u128 c)  { return spu__x8_fma(a, b, c, 0, 0x80000000u); }  /* a*b - c */
  SPU__X8_INLINE u128 spu_fnms(u128 a, u128 b, u128 c) { return spu__x8_fma(a, b, c, 0x80000000u, 0); }  /* c - a*b */
-@@ -2330,4 +2403,69 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
+@@ -1789,7 +1862,7 @@ static inline u128 spu_cdd_pos(int pos) {
+ }
+ static inline u128 spu_cbd(u128 a, int i7){ return spu_cbd_pos((int)a._u32[0]+i7); }
+ static inline u128 spu_chd(u128 a, int i7){ return spu_chd_pos((int)a._u32[0]+i7); }
+-static inline u128 spu_cwd_ref(u128 a, int i7){ return spu_cwd_pos((int)a._u32[0]+i7); }
++static inline u128 spu_cwd_ref(u128 a, int i7){ return spu_cwd_pos((int)(a._u32[0] + (uint32_t)i7)); }   /* fix 121: unsigned add (cwx passes a full register) */
+ #if defined(__ARM_NEON) && !defined(SPU_SCALAR_HELPERS) && !defined(SPU_SCALAR_INT)
+ static inline u128 spu_cwd(u128 a, int i7) {
+     static const uint32_t base[4] = {0x10111213u, 0x14151617u, 0x18191A1Bu, 0x1C1D1E1Fu}, lane[4] = {0, 1, 2, 3};
+@@ -1807,7 +1880,10 @@ static inline u128 spu_cwd(u128 a, int i7) { return spu_cwd_ref(a, i7); }
+ static inline u128 spu_cdd(u128 a, int i7){ return spu_cdd_pos((int)a._u32[0]+i7); }
+ static inline u128 spu_cbx(u128 a, u128 b){ return spu_cbd_pos((int)(a._u32[0]+b._u32[0])); }
+ static inline u128 spu_chx(u128 a, u128 b){ return spu_chd_pos((int)(a._u32[0]+b._u32[0])); }
+-static inline u128 spu_cwx(u128 a, u128 b){ return spu_cwd_pos((int)(a._u32[0]+b._u32[0])); }
++/* fix 121: the same position (a + b, preferred words, low 4 bits) as spu_cwd(a, b's word), so cwx takes cwd's
++ * vector form: the scalar one stored the base pattern and then one word over it, and the 16-byte read that
++ * follows (a shufb) waited on a failed store-to-load forward. */
++static inline u128 spu_cwx(u128 a, u128 b){ return spu_cwd(a, (int)b._u32[0]); }
+ static inline u128 spu_cdx(u128 a, u128 b){ return spu_cdd_pos((int)(a._u32[0]+b._u32[0])); }
+ 
+ /* ---- Phase 3: rotate-and-mask family ---- */
+@@ -2330,4 +2406,69 @@ static inline u128 spu_fsmh(u128 a) { return spu_fsmh_ref(a); }
  static inline u128 spu_fsmb(u128 a) { return spu_fsmb_ref(a); }
  #endif
  
