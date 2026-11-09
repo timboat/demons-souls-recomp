@@ -3123,6 +3123,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked: the result is byte-identical to a copy that `git apply --check` passed against a freshly lifted
       port/, and `mac/rebuild.sh` then runs clean through lift and build. Windows not run; its recompiled files are
       LF as well, and v2026.11.08's all-LF patch applied there.
+    - Main's fix 106 made the same CR removal; after the rebase this entry's patch change is theirs.
 131. **macOS links again: non-Windows stand-in for ps3_host_mouse_look_pending (2026-11-08, MacBook M2 Pro):**
     - Measured: linking DemonsSoulsRecomp failed on arm64, `_ps3_host_mouse_look_pending` undefined, referenced from
       func_00119670 (ppu_recomp_016.cpp).
@@ -3178,6 +3179,43 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       RSX_ENGINE_KBM_LOG=1). In-game frames: L / R / square on the HUD become mice and R; the Start menu's help line shows E and Space; the Profile
       List's E / Space / R; the title PRESS ENTER KEY. Switching to a pad and back was not run (no pad here, Mac stand-in for fix 91's rule).
     - LD_TEX_KBM=0 / 1, LD_TEX_DIR, LD_TEX_KBM_DIR as on Windows.
+135. **macOS Boletaria 28 -> 32 fps: NEON vertex decode and a dense index remap (2026-11-08, MacBook M2 Pro):**
+    - Measured (PS3_FTRACE plus `sample`, standing at the Boletaria start, DES_WARP_AT=60:2,0,999, 60 fps mode): a median frame 35 ms, of which the RSX
+      thread's FIFO drain was 27.8 ms, the GPU itself ~4 ms and the SPUs mostly idle. RSX thread self time: rsx_vertex_fetch_many 30%,
+      rsx_vertex_remap_build 18%, memmove 10% (eng_stage_copy, nearly all the decoded vertices going into the stage buffer).
+    - Fix (rsx_vertex_compact.c, `__aarch64__` only; the x86 code is unchanged): the FLOAT, UNORM8, UINT8 and SINT16 loops as NEON, components
+      read at fixed sizes and blended over 0,0,0,1 in one step; rsx_vertex_remap_build uses a stamped array over the draw's index range when
+      every reference shares one base and the range is at most 1 M (nearly every indexed draw) -- same output, in the same order, as the hash table it skips.
+    - Gotcha: this macOS SDK's fortified memcpy stays a __memcpy_chk call even at a constant size through a void* parameter. The first NEON
+      version lost 7 fps to it; __builtin_memcpy compiles to loads (`nm -u` on the object shows no mem* left).
+    - A/B on one binary with temporary env switches, Boletaria start, alternating, 3 pairs: on-screen fps 28 / 28 / 28 -> 32 / 32 / 32, drain 29.7 / 31.4 / 31.5 ->
+      26.7 / 26.7 / 26.5 ms/frame. Separately-built runs varied by several fps; compare only inside one binary here. Final build, single runs: Valley
+      54 -> 55, Latria 47 -> 52 (not A/B'd). Frames in all three areas look right; no crash. The switches are not in the patch.
+    - Left for the next step: decoded vertices are still built and copied per draw per frame (most of what remains on the RSX thread); `gpu wait (flush)`
+      ~5 ms a frame; no frame pacing yet. The spu_async thread spends ~27% of its samples in mach_absolute_time and _tlv_get_addr while busy (macOS thread-local
+      and clock costs in the SPU runtime): for the SPU side, not changed here.
+136. **macOS Boletaria 32 -> 57 fps: decoded vertices kept across frames (2026-11-09, MacBook M2 Pro):**
+    - Rebased on main first (fixes 106-129). Their speed-ups alone did not move the Mac here: Boletaria start 26 / 32 / 31 fps in three cache-off runs
+      against 32 before (inside the run-to-run spread). Profile, same spot: the RSX thread ~60% in rsx_vertex_fetch_many (25%), memmove (23%),
+      rsx_vertex_remap_build (7.5%) and rsx_draw_engine_write_topology_indices (4.4%) -- every draw decoded and copied again each frame, though
+      nearly all of them are unchanged level geometry.
+    - Fix (rsx_draw_engine.c under `__APPLE__`, rsx_metal_backend.m; the Mac counterpart of rsx_live_draw.c's ld_vc cache, Windows / Linux compile
+      as before): the Metal backend lends the engine a 256 MB shared buffer (touched pages only: 24-60 MB in the areas tried). A draw's key is a
+      hash of its layout, batches, index bytes and offsets; its decoded vertices and built indices are stored in the buffer and later frames draw
+      straight from it, skipping fetch, remap, index build and stage copy.
+    - Staleness: the guest source bytes are hashed before decode. A hit re-hashes them in full until it has matched 8 times, then in full every
+      16th frame with a sparse probe in between. A key changing 3 times is left uncached for 120 frames. A key is stored on its second
+      sighting (about 215 draws a frame in Boletaria have keys that never recur; storing them first cost 118 MB). Freed blocks are reused only
+      after the command buffers that read them have completed.
+    - A/B on one binary (RSX_ENGINE_VCACHE=0 against default), on-screen fps median over the last ~40 s, DES_WARP_AT=60:<area>, 60 fps mode:
+      Boletaria 26 / 32 / 31 / 32 -> 58 / 53 / 57; Valley 55 -> 58; Latria 49 -> 59. Boletaria per 300 frames: ~231,400 hits, ~64,600 not
+      cacheable or first sightings, ~1,000 stored, 2-5 found changed, 0 marked dynamic; 53 MB held.
+    - Checked: frames with the cache on and off look the same in Boletaria, Valley and Latria; no crash or Metal error in the logs. The character
+      only stood at each warp point: walking, fighting and area transitions with the cache on were NOT run. Not run on Windows or Linux (the
+      code is not compiled there).
+    - RSX_ENGINE_VCACHE=0 turns it off; RSX_ENGINE_VCACHE_STATS=1 logs the counters every 300 frames.
+    - Left: `gpu wait (flush)` ~5 ms a frame and frame pacing. spu_async still spends much of its busy time in mach_absolute_time and
+      _tlv_get_addr (SPU runtime, not changed here).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
