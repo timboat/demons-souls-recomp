@@ -2694,6 +2694,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       is always LF when the patch goes on, so this file should have none; check for that when regenerating a section.
     - Checked: a copy of the lifted code put back to the fresh-lift state and made LF as step 5 does. The old patch fails
       on the nine files and the new one applies, each under core.autocrlf=false, true and input.
+107. **BUILD no longer compiles the game without its patches after a recompile that stopped (2026-11-09):**
+    - The trap from fix 106: step_lift removes port/.lifted before recompiling and writes it back only after the patch
+      is on. If that stops in between (patch failure, power cut, closed window), the next BUILD got 'none' from
+      sync_lifted ("not set up yet") and compiled the lifted code as it was. Found when a scratch build came out
+      without boss rush's code and reported success.
+    - Fix (setup/patch_sync.py sync_lifted): no mark but out/, recompiled/ or spu/ on disk returns 'relift', so BUILD
+      recompiles and applies the patch again, or stops with the patch's error. A folder with none of those stays 'none'.
+    - Checked on a separate SETUP install, sync_patches() only: mark removed and a broken patch stops with the error at
+      step 5, twice in a row, without reaching the compile; the good patch then recovers on a real fresh recompile
+      (patch on, mark written, sync_lifted 'current').
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

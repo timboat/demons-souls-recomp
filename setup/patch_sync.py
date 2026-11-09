@@ -174,6 +174,11 @@ def sync_lifted(inputs):
     settings changed, or it could not tell what is on disk: the caller recompiles from scratch)."""
     mark = os.path.join(PORT, '.lifted')
     if not os.path.isfile(mark):
+        # The mark is written only after the patch is on. No mark with lifted output on disk = a recompile
+        # that stopped before that: compiling this would build the game without the port's edits.
+        if any(os.path.isdir(os.path.join(PORT, d)) for d in ('out', 'recompiled', 'spu')):
+            say('  the last recompile of the game code did not finish: doing it again (a few minutes)')
+            return 'relift'
         return 'none'
     new = _read(LIFTED_PATCH)
     with open(mark) as f:
