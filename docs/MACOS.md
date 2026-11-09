@@ -82,11 +82,22 @@ The first build takes a while: there are 129 lifted files, about 440 MB of C++.
 
 ## Playing
 
+Open `DemonsSoulsLauncher.app` in the port's folder (`mac/rebuild.sh build` puts it there), or run:
+
 ```sh
 mac/play.sh
 ```
 
-Settings, as environment variables:
+The launcher is the Mac counterpart of the Windows one (`mac/launcher_native/`, plain AppKit): frame rate,
+window size, which copy of the game, movies, god mode, skip the intro, input, the character name, extra
+`NAME=value` settings, PLAY, and the same four buttons (check for updates, report a problem, controls,
+folders). It keeps the choices in `launcher.ini` in the port's folder, in the Windows launcher's format, and
+starts `mac/play.sh` with them. Its Controls window changes the keyboard and mouse keys; the game's button
+icons follow. `DemonsSoulsLauncher.app/Contents/MacOS/DemonsSoulsLauncher --play` starts the game with the
+saved settings and no window. Not offered, because the Mac build does not have them yet: resolution scale,
+fullscreen, frame rates other than 60 / 30, texture dumping and frame-timing recording.
+
+Settings for `mac/play.sh` on its own, as environment variables:
 
 | Variable | Effect |
 |---|---|
@@ -98,6 +109,9 @@ Settings, as environment variables:
 | `PS3_INPUT_MODE=controller` or `keyboard` | only that input; the default takes both |
 | `DES_SIZE=<w>x<h>` | the window's size (default 1280x720) |
 | `DES_LOG_DIR=<dir>` | where the two logs go (default `logs/`) |
+| `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
+| `DES_GOD=1`, `DES_SKIP_INTRO=1` | god mode from the start; straight to PRESS START |
+| `RSX_ENGINE_VCACHE=0` | turns off the decoded-vertex cache (NOTES fix 136), to rule it out |
 
 The logs go to `logs/last_run_out.txt` and `logs/last_run_err.txt`.
 
@@ -106,7 +120,8 @@ The logs go to `logs/last_run_out.txt` and `logs/last_run_err.txt`.
 The controller works through SDL. DualSense and DualShock 4 use HIDAPI; an Xbox pad is read over IOKit,
 because MFi delivers no buttons to a process without a window.
 
-Keyboard and mouse use the Windows layout (`mac/input.toml`):
+Keyboard and mouse use the Windows layout (`mac/input.toml`; the launcher's Controls window changes the keys
+and writes its own map, `cache/launcher_input.toml`, before each Play):
 
 | Input | Control |
 |---|---|

@@ -22,6 +22,7 @@
 /.venv/
 /setup/local_config.json
 /DemonsSoulsLauncher.exe
+/DemonsSoulsLauncher.app/
 /launcher.ini
 /update_pending.txt
 *.iso

@@ -116,7 +116,11 @@ for s in $steps; do
         # the build: without them the game shows the PS3 buttons.
         "$VPY" "$DES_ROOT/tools/kbm_icons.py" "$DES_USRDIR" "$DES_ROOT/textures/kbm" --if-stale ||
             print -r -- "  keyboard / mouse button icons not made; the game shows the PS3 buttons"
-        print -r -- "  built: $DES_EXE" ;;
+        print -r -- "  built: $DES_EXE"
+        # The launcher window (DemonsSoulsLauncher.app next to mac/). Never stops the build: mac/play.sh
+        # plays without it.
+        zsh "$here/launcher_native/build.sh" ||
+            print -r -- "  DemonsSoulsLauncher.app not built; mac/play.sh starts the game" ;;
     esac
 done
 say "done"
