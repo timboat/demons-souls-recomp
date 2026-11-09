@@ -66,6 +66,15 @@ endif()
 list(LENGTH RECOMP_SOURCES RECOMP_SOURCE_COUNT)
 message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 
+# No on-demand TLS initialisation guards in C++ (docs/NOTES.md fix 123). clang-cl, like MSVC since
+# VS 2019, puts a check of the CRT's __tls_guard -- and a call to __dyn_tls_on_demand_init -- in front
+# of every access to an extern thread_local; the lifted code reads g_trampoline_fn after every guest
+# call, so the exe carried ~870k of them. The guard is for DLLs loaded after their threads started;
+# this is an exe, whose TLS callback initialises every thread when it starts.
+if(MSVC)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:tlsGuards->)
+endif()
+
 # ---------------------------------------------------------------------------
 # ps3recomp runtime library
 # ---------------------------------------------------------------------------

@@ -18947,10 +18947,10 @@ index 9cb5040..f28469b 100644
       * sys_net NID LBP imports so none fall to the unresolved-NID default. */
      ps3_hle_register_ctx(0x6005CDE1u, "_sys_net_errno_loc",     hle_net_errno_loc);
 diff --git a/runtime/ppu/ppu_vmx.h b/runtime/ppu/ppu_vmx.h
-index 35052c6..56e782d 100644
+index 35052c6..f44e444 100644
 --- a/runtime/ppu/ppu_vmx.h
 +++ b/runtime/ppu/ppu_vmx.h
-@@ -254,6 +254,68 @@ VMX_INL void vmx_vsro(VMX_D, VMX_A, VMX_B) { VMX_ARGS_PREP; int n = (b[15] >> 3)
+@@ -254,6 +254,76 @@ VMX_INL void vmx_vsro(VMX_D, VMX_A, VMX_B) { VMX_ARGS_PREP; int n = (b[15] >> 3)
   * floating point
   * ==================================================================== */
  
@@ -19009,17 +19009,25 @@ index 35052c6..56e782d 100644
 +    const __m128 x = vmxq_flush(vmxq_ld(a), vscr), y = vmxq_flush(vmxq_ld(b), vscr);
 +    vmxq_st(d, vmxq_flush(vmxq_nan2(_mm_sub_ps(x, y), x, y), vscr));
 +}
-+#define VMX_FAST2(name) if (ppu_vmx_fma) { name##_fast(d_, a_, b_, vscr); return; }
-+#define VMX_FAST3(name) if (ppu_vmx_fma) { name##_fast(d_, a_, b_, c_, vscr); return; }
++#define VMX_FAST2(name) if (__builtin_expect(ppu_vmx_fma, 1)) { name##_fast(d_, a_, b_, vscr); return; }
++#define VMX_FAST3(name) if (__builtin_expect(ppu_vmx_fma, 1)) { name##_fast(d_, a_, b_, c_, vscr); return; }
++/* fix 122: the scalar fallback of a fast op sits behind a call of its own. Inline in the wrapper it
++ * made every vaddfp / vmaddfp call save and restore xmm6-xmm14 (callee-saved on Windows) for the
++ * fallback's sake. The wrapper itself stays a call: inlined into lifted code it was 1.4% SLOWER at
++ * Latria (the big lifted functions then save vector registers on every entry). */
++#define VMX_SLOW static __attribute__((noinline, cold))
++#define VMX_CALL static __attribute__((noinline))
 +#else
 +#define VMX_FAST2(name)
 +#define VMX_FAST3(name)
++#define VMX_SLOW VMX_INL
++#define VMX_CALL VMX_INL
 +#endif
 +
  #define VMX_FBIN(name, op, flush_in) \
  VMX_INL void name(VMX_D, VMX_A, VMX_B, uint32_t vscr) { VMX_ARGS_PREP; \
      for (int i = 0; i < 4; i++) { uint32_t x = vmx_w(a, i), y = vmx_w(b, i); \
-@@ -270,21 +332,25 @@ VMX_INL float vmx_minf(float x, float y) {
+@@ -270,21 +340,29 @@ VMX_INL float vmx_minf(float x, float y) {
      if (x == 0 && y == 0) return signbit(x) ? x : y;      /* min(-0,+0) = -0 */
      return x < y ? x : y;
  }
@@ -19027,8 +19035,10 @@ index 35052c6..56e782d 100644
 -VMX_FBIN(vmx_vsubfp, vmx_f(x) - vmx_f(y), 1)
 +VMX_FBIN(vmx_vaddfp_ref, vmx_f(x) + vmx_f(y), 1)
 +VMX_FBIN(vmx_vsubfp_ref, vmx_f(x) - vmx_f(y), 1)
-+VMX_INL void vmx_vaddfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { VMX_FAST2(vmx_vaddfp) vmx_vaddfp_ref(d_, a_, b_, vscr); }
-+VMX_INL void vmx_vsubfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { VMX_FAST2(vmx_vsubfp) vmx_vsubfp_ref(d_, a_, b_, vscr); }
++VMX_SLOW void vmx_vaddfp_slow(VMX_D, VMX_A, VMX_B, uint32_t vscr) { vmx_vaddfp_ref(d_, a_, b_, vscr); }
++VMX_SLOW void vmx_vsubfp_slow(VMX_D, VMX_A, VMX_B, uint32_t vscr) { vmx_vsubfp_ref(d_, a_, b_, vscr); }
++VMX_CALL void vmx_vaddfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { VMX_FAST2(vmx_vaddfp) vmx_vaddfp_slow(d_, a_, b_, vscr); }
++VMX_CALL void vmx_vsubfp(VMX_D, VMX_A, VMX_B, uint32_t vscr) { VMX_FAST2(vmx_vsubfp) vmx_vsubfp_slow(d_, a_, b_, vscr); }
  VMX_FBIN(vmx_vmaxfp, vmx_maxf(vmx_f(x), vmx_f(y)), 0)
  VMX_FBIN(vmx_vminfp, vmx_minf(vmx_f(x), vmx_f(y)), 0)
  
@@ -19039,13 +19049,15 @@ index 35052c6..56e782d 100644
                z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
          vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(fmaf(x, z, y))), vscr)); } VMX_OUT; }
 -VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
-+VMX_INL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_FAST3(vmx_vmaddfp) vmx_vmaddfp_ref(d_, a_, b_, c_, vscr); }
++VMX_SLOW void vmx_vmaddfp_slow(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { vmx_vmaddfp_ref(d_, a_, b_, c_, vscr); }
++VMX_CALL void vmx_vmaddfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_FAST3(vmx_vmaddfp) vmx_vmaddfp_slow(d_, a_, b_, c_, vscr); }
 +VMX_INL void vmx_vnmsubfp_ref(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_ARGS_PREP; const uint8_t* c = (const uint8_t*)c_;
      for (int i = 0; i < 4; i++) {
          float x = vmx_f(vmx_flush(vmx_w(a, i), vscr)), y = vmx_f(vmx_flush(vmx_w(b, i), vscr)),
                z = vmx_f(vmx_flush(vmx_w(c, i), vscr));
          vmx_sw(r, i, vmx_flush(vmx_fix(vmx_u(-fmaf(x, z, -y))), vscr)); } VMX_OUT; }
-+VMX_INL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_FAST3(vmx_vnmsubfp) vmx_vnmsubfp_ref(d_, a_, b_, c_, vscr); }
++VMX_SLOW void vmx_vnmsubfp_slow(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { vmx_vnmsubfp_ref(d_, a_, b_, c_, vscr); }
++VMX_CALL void vmx_vnmsubfp(VMX_D, VMX_A, VMX_B, VMX_C, uint32_t vscr) { VMX_FAST3(vmx_vnmsubfp) vmx_vnmsubfp_slow(d_, a_, b_, c_, vscr); }
  
  #define VMX_FUN(name, expr, flush_in, nanmode) \
  VMX_INL void name(VMX_D, VMX_B, uint32_t vscr) { const uint8_t* b = (const uint8_t*)b_; uint8_t r[16]; \

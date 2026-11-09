@@ -2651,6 +2651,37 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - A/B at Latria 4-2 uncapped (fix 120 vs this, 3 each): 67.4 / 68.4 / 67.9 -> 68.4 / 68.3 / 68.2 fps (small).
       Tour: every stop 59.2-60 mean, no aborts or halts.
     - Review (2 agents): bit-identical on every build branch; the scalar-path signed overflow found there is fixed.
+122. **The four fast VMX float ops without the scalar fallback's register saves (2026-11-08, 5800X):**
+    - Paired RIP profile at Latria 4-2 uncapped (the dispatcher and HighGraphics sampled back to back; HighGraphics
+      waits on the dispatcher 29% of the time): vmx_vaddfp 2.8%, vmx_vmaddfp 2.4% and the other float helpers ~2% of
+      HighGraphics' in-exe samples, each an out-of-line call whose prologue saved and restored xmm6-xmm14
+      (callee-saved on Windows) only because the per-lane scalar fallback sat in the same body.
+    - Fix (runtime/ppu/ppu_vmx.h): vaddfp / vsubfp / vmaddfp / vnmsubfp keep their fast path (fix 54) in a static
+      noinline wrapper and call the scalar form through a separate noinline cold function. Same functions under the
+      same conditions; only the code layout changed. Tried first: letting the wrapper inline into lifted code, which
+      was 1.4% SLOWER (65.7 -> 64.8 fps, 3 each; the big lifted functions then save vector registers on every entry).
+    - A/B at Latria 4-2 uncapped (3 each, rotating with fix 124): 67.5 / 67.6 / 67.2 -> 67.4 / 67.8 / 67.1 fps --
+      no measurable change; kept for the smaller code (exe 319.6 -> 297.3 MB).
+123. **No on-demand TLS init guards in C++ (2026-11-08, 5800X):**
+    - clang-cl (as MSVC since VS 2019) checks the CRT's __tls_guard, and calls __dyn_tls_on_demand_init when it is
+      clear, in front of every access to an extern thread_local. The lifted code reads g_trampoline_fn after every
+      guest call (DRAIN_TRAMPOLINE), so the exe carried 872k of these checks; the PPU loader's indirect-call path
+      had five per call.
+    - Fix (project/CMakeLists.txt): /Zc:tlsGuards- for C++ in every target (add_compile_options before the runtime
+      subdirectory). The guard exists for DLLs loaded after their threads started; in an exe the CRT's TLS
+      callback initialises each thread as it starts. The only C++ thread_local with a constructor or destructor
+      (ppu_loader.cpp's cb_slot_owner) is constant-initialised. exe 297.3 -> 273.2 MB.
+124. **The TOC check after every guest call made inline (2026-11-08, 5800X):**
+    - DRAIN_TRAMPOLINE called ds_toc_check (project/stubs.cpp) after every lifted call site -- 1.2% of
+      HighGraphics' samples in the call alone, for a check that returns at once unless r2 is off.
+    - Fix (patches/lifted-code.patch, all 129 PPU chunks): the macro compares r2 with the three TOCs itself and
+      calls ds_toc_check only when it matches none, so the report is unchanged.
+    - A/B with fix 123 (Latria 4-2 uncapped, 3 each, rotating): 67.4 / 67.8 / 67.1 -> 69.0 / 68.7 / 68.9 fps (+2.1%).
+    - Review of 122-124 (3 agents, one per change, adversarial verify): no findings.
+    - Tried and dropped: moving ps3_indirect_call's PPU_CSCHECK / PS3_ICALL_GATE half out of line (its 400-byte
+      buffer gives every guest function-pointer call a 0x268-byte frame and a stack cookie) was 2.8% SLOWER
+      (69.4 / 69.2 / 69.4 -> 67.3 / 67.9 / 66.9 fps), cause not found.
+    - Tour (7 stops, fixes 122-124): every stop 58.9-60 mean, no aborts or halts.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

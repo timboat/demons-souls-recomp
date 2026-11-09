@@ -73,7 +73,7 @@ diff -ruN a/recompiled/ppu_recomp_000.cpp b/recompiled/ppu_recomp_000.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -91,7 +91,7 @@ diff -ruN a/recompiled/ppu_recomp_001.cpp b/recompiled/ppu_recomp_001.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -109,7 +109,7 @@ diff -ruN a/recompiled/ppu_recomp_002.cpp b/recompiled/ppu_recomp_002.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -127,7 +127,7 @@ diff -ruN a/recompiled/ppu_recomp_003.cpp b/recompiled/ppu_recomp_003.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -145,7 +145,7 @@ diff -ruN a/recompiled/ppu_recomp_004.cpp b/recompiled/ppu_recomp_004.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -163,7 +163,7 @@ diff -ruN a/recompiled/ppu_recomp_005.cpp b/recompiled/ppu_recomp_005.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -181,7 +181,7 @@ diff -ruN a/recompiled/ppu_recomp_006.cpp b/recompiled/ppu_recomp_006.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -199,7 +199,7 @@ diff -ruN a/recompiled/ppu_recomp_007.cpp b/recompiled/ppu_recomp_007.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -217,7 +217,7 @@ diff -ruN a/recompiled/ppu_recomp_008.cpp b/recompiled/ppu_recomp_008.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -235,7 +235,7 @@ diff -ruN a/recompiled/ppu_recomp_009.cpp b/recompiled/ppu_recomp_009.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -253,7 +253,7 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -270,7 +270,7 @@ diff -ruN a/recompiled/ppu_recomp_010.cpp b/recompiled/ppu_recomp_010.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -721,7 +721,7 @@ diff -ruN a/recompiled/ppu_recomp_012.cpp b/recompiled/ppu_recomp_012.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -739,7 +739,7 @@ diff -ruN a/recompiled/ppu_recomp_013.cpp b/recompiled/ppu_recomp_013.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -757,7 +757,7 @@ diff -ruN a/recompiled/ppu_recomp_014.cpp b/recompiled/ppu_recomp_014.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -775,7 +775,7 @@ diff -ruN a/recompiled/ppu_recomp_015.cpp b/recompiled/ppu_recomp_015.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -849,7 +849,7 @@ diff -ruN a/recompiled/ppu_recomp_016.cpp b/recompiled/ppu_recomp_016.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -975,7 +975,7 @@ diff -ruN a/recompiled/ppu_recomp_017.cpp b/recompiled/ppu_recomp_017.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1001,7 +1001,7 @@ diff -ruN a/recompiled/ppu_recomp_018.cpp b/recompiled/ppu_recomp_018.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1053,7 +1053,7 @@ diff -ruN a/recompiled/ppu_recomp_019.cpp b/recompiled/ppu_recomp_019.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1071,7 +1071,7 @@ diff -ruN a/recompiled/ppu_recomp_020.cpp b/recompiled/ppu_recomp_020.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1089,7 +1089,7 @@ diff -ruN a/recompiled/ppu_recomp_021.cpp b/recompiled/ppu_recomp_021.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1107,7 +1107,7 @@ diff -ruN a/recompiled/ppu_recomp_022.cpp b/recompiled/ppu_recomp_022.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1139,7 +1139,7 @@ diff -ruN a/recompiled/ppu_recomp_023.cpp b/recompiled/ppu_recomp_023.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1166,7 +1166,7 @@ diff -ruN a/recompiled/ppu_recomp_024.cpp b/recompiled/ppu_recomp_024.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1184,7 +1184,7 @@ diff -ruN a/recompiled/ppu_recomp_025.cpp b/recompiled/ppu_recomp_025.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1250,7 +1250,7 @@ diff -ruN a/recompiled/ppu_recomp_026.cpp b/recompiled/ppu_recomp_026.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1268,7 +1268,7 @@ diff -ruN a/recompiled/ppu_recomp_027.cpp b/recompiled/ppu_recomp_027.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1286,7 +1286,7 @@ diff -ruN a/recompiled/ppu_recomp_028.cpp b/recompiled/ppu_recomp_028.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1304,7 +1304,7 @@ diff -ruN a/recompiled/ppu_recomp_029.cpp b/recompiled/ppu_recomp_029.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1322,7 +1322,7 @@ diff -ruN a/recompiled/ppu_recomp_030.cpp b/recompiled/ppu_recomp_030.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1340,7 +1340,7 @@ diff -ruN a/recompiled/ppu_recomp_031.cpp b/recompiled/ppu_recomp_031.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1358,7 +1358,7 @@ diff -ruN a/recompiled/ppu_recomp_032.cpp b/recompiled/ppu_recomp_032.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1390,7 +1390,7 @@ diff -ruN a/recompiled/ppu_recomp_033.cpp b/recompiled/ppu_recomp_033.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1426,7 +1426,7 @@ diff -ruN a/recompiled/ppu_recomp_034.cpp b/recompiled/ppu_recomp_034.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1444,7 +1444,7 @@ diff -ruN a/recompiled/ppu_recomp_035.cpp b/recompiled/ppu_recomp_035.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1462,7 +1462,7 @@ diff -ruN a/recompiled/ppu_recomp_036.cpp b/recompiled/ppu_recomp_036.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1480,7 +1480,7 @@ diff -ruN a/recompiled/ppu_recomp_037.cpp b/recompiled/ppu_recomp_037.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1498,7 +1498,7 @@ diff -ruN a/recompiled/ppu_recomp_038.cpp b/recompiled/ppu_recomp_038.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1516,7 +1516,7 @@ diff -ruN a/recompiled/ppu_recomp_039.cpp b/recompiled/ppu_recomp_039.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1534,7 +1534,7 @@ diff -ruN a/recompiled/ppu_recomp_040.cpp b/recompiled/ppu_recomp_040.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1712,7 +1712,7 @@ diff -ruN a/recompiled/ppu_recomp_041.cpp b/recompiled/ppu_recomp_041.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1730,7 +1730,7 @@ diff -ruN a/recompiled/ppu_recomp_042.cpp b/recompiled/ppu_recomp_042.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1748,7 +1748,7 @@ diff -ruN a/recompiled/ppu_recomp_043.cpp b/recompiled/ppu_recomp_043.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1766,7 +1766,7 @@ diff -ruN a/recompiled/ppu_recomp_044.cpp b/recompiled/ppu_recomp_044.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1798,7 +1798,7 @@ diff -ruN a/recompiled/ppu_recomp_045.cpp b/recompiled/ppu_recomp_045.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1842,7 +1842,7 @@ diff -ruN a/recompiled/ppu_recomp_046.cpp b/recompiled/ppu_recomp_046.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1868,7 +1868,7 @@ diff -ruN a/recompiled/ppu_recomp_047.cpp b/recompiled/ppu_recomp_047.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1894,7 +1894,7 @@ diff -ruN a/recompiled/ppu_recomp_048.cpp b/recompiled/ppu_recomp_048.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1928,7 +1928,7 @@ diff -ruN a/recompiled/ppu_recomp_049.cpp b/recompiled/ppu_recomp_049.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1967,7 +1967,7 @@ diff -ruN a/recompiled/ppu_recomp_050.cpp b/recompiled/ppu_recomp_050.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -1985,7 +1985,7 @@ diff -ruN a/recompiled/ppu_recomp_051.cpp b/recompiled/ppu_recomp_051.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2017,7 +2017,7 @@ diff -ruN a/recompiled/ppu_recomp_052.cpp b/recompiled/ppu_recomp_052.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2044,7 +2044,7 @@ diff -ruN a/recompiled/ppu_recomp_053.cpp b/recompiled/ppu_recomp_053.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2062,7 +2062,7 @@ diff -ruN a/recompiled/ppu_recomp_054.cpp b/recompiled/ppu_recomp_054.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2080,7 +2080,7 @@ diff -ruN a/recompiled/ppu_recomp_055.cpp b/recompiled/ppu_recomp_055.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2098,7 +2098,7 @@ diff -ruN a/recompiled/ppu_recomp_056.cpp b/recompiled/ppu_recomp_056.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2116,7 +2116,7 @@ diff -ruN a/recompiled/ppu_recomp_057.cpp b/recompiled/ppu_recomp_057.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2134,7 +2134,7 @@ diff -ruN a/recompiled/ppu_recomp_058.cpp b/recompiled/ppu_recomp_058.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2152,7 +2152,7 @@ diff -ruN a/recompiled/ppu_recomp_059.cpp b/recompiled/ppu_recomp_059.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2178,7 +2178,7 @@ diff -ruN a/recompiled/ppu_recomp_060.cpp b/recompiled/ppu_recomp_060.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2221,7 +2221,7 @@ diff -ruN a/recompiled/ppu_recomp_061.cpp b/recompiled/ppu_recomp_061.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2239,7 +2239,7 @@ diff -ruN a/recompiled/ppu_recomp_062.cpp b/recompiled/ppu_recomp_062.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2257,7 +2257,7 @@ diff -ruN a/recompiled/ppu_recomp_063.cpp b/recompiled/ppu_recomp_063.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2289,7 +2289,7 @@ diff -ruN a/recompiled/ppu_recomp_064.cpp b/recompiled/ppu_recomp_064.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2334,7 +2334,7 @@ diff -ruN a/recompiled/ppu_recomp_065.cpp b/recompiled/ppu_recomp_065.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2352,7 +2352,7 @@ diff -ruN a/recompiled/ppu_recomp_066.cpp b/recompiled/ppu_recomp_066.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2370,7 +2370,7 @@ diff -ruN a/recompiled/ppu_recomp_067.cpp b/recompiled/ppu_recomp_067.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2388,7 +2388,7 @@ diff -ruN a/recompiled/ppu_recomp_068.cpp b/recompiled/ppu_recomp_068.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2406,7 +2406,7 @@ diff -ruN a/recompiled/ppu_recomp_069.cpp b/recompiled/ppu_recomp_069.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2423,7 +2423,7 @@ diff -ruN a/recompiled/ppu_recomp_069.cpp b/recompiled/ppu_recomp_069.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2464,7 +2464,7 @@ diff -ruN a/recompiled/ppu_recomp_071.cpp b/recompiled/ppu_recomp_071.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2482,7 +2482,7 @@ diff -ruN a/recompiled/ppu_recomp_072.cpp b/recompiled/ppu_recomp_072.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2514,7 +2514,7 @@ diff -ruN a/recompiled/ppu_recomp_073.cpp b/recompiled/ppu_recomp_073.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2568,7 +2568,7 @@ diff -ruN a/recompiled/ppu_recomp_074.cpp b/recompiled/ppu_recomp_074.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2586,7 +2586,7 @@ diff -ruN a/recompiled/ppu_recomp_075.cpp b/recompiled/ppu_recomp_075.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2604,7 +2604,7 @@ diff -ruN a/recompiled/ppu_recomp_076.cpp b/recompiled/ppu_recomp_076.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2622,7 +2622,7 @@ diff -ruN a/recompiled/ppu_recomp_077.cpp b/recompiled/ppu_recomp_077.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2640,7 +2640,7 @@ diff -ruN a/recompiled/ppu_recomp_078.cpp b/recompiled/ppu_recomp_078.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2658,7 +2658,7 @@ diff -ruN a/recompiled/ppu_recomp_079.cpp b/recompiled/ppu_recomp_079.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2676,7 +2676,7 @@ diff -ruN a/recompiled/ppu_recomp_080.cpp b/recompiled/ppu_recomp_080.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2694,7 +2694,7 @@ diff -ruN a/recompiled/ppu_recomp_081.cpp b/recompiled/ppu_recomp_081.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2712,7 +2712,7 @@ diff -ruN a/recompiled/ppu_recomp_082.cpp b/recompiled/ppu_recomp_082.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2730,7 +2730,7 @@ diff -ruN a/recompiled/ppu_recomp_083.cpp b/recompiled/ppu_recomp_083.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2762,7 +2762,7 @@ diff -ruN a/recompiled/ppu_recomp_084.cpp b/recompiled/ppu_recomp_084.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -2789,7 +2789,7 @@ diff -ruN a/recompiled/ppu_recomp_085.cpp b/recompiled/ppu_recomp_085.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3301,7 +3301,7 @@ diff -ruN a/recompiled/ppu_recomp_086.cpp b/recompiled/ppu_recomp_086.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3384,7 +3384,7 @@ diff -ruN a/recompiled/ppu_recomp_087.cpp b/recompiled/ppu_recomp_087.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3410,7 +3410,7 @@ diff -ruN a/recompiled/ppu_recomp_088.cpp b/recompiled/ppu_recomp_088.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3428,7 +3428,7 @@ diff -ruN a/recompiled/ppu_recomp_089.cpp b/recompiled/ppu_recomp_089.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3446,7 +3446,7 @@ diff -ruN a/recompiled/ppu_recomp_090.cpp b/recompiled/ppu_recomp_090.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3464,7 +3464,7 @@ diff -ruN a/recompiled/ppu_recomp_091.cpp b/recompiled/ppu_recomp_091.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3482,7 +3482,7 @@ diff -ruN a/recompiled/ppu_recomp_092.cpp b/recompiled/ppu_recomp_092.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3500,7 +3500,7 @@ diff -ruN a/recompiled/ppu_recomp_093.cpp b/recompiled/ppu_recomp_093.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3518,7 +3518,7 @@ diff -ruN a/recompiled/ppu_recomp_094.cpp b/recompiled/ppu_recomp_094.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3536,7 +3536,7 @@ diff -ruN a/recompiled/ppu_recomp_095.cpp b/recompiled/ppu_recomp_095.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3554,7 +3554,7 @@ diff -ruN a/recompiled/ppu_recomp_096.cpp b/recompiled/ppu_recomp_096.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3572,7 +3572,7 @@ diff -ruN a/recompiled/ppu_recomp_097.cpp b/recompiled/ppu_recomp_097.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3590,7 +3590,7 @@ diff -ruN a/recompiled/ppu_recomp_098.cpp b/recompiled/ppu_recomp_098.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3608,7 +3608,7 @@ diff -ruN a/recompiled/ppu_recomp_099.cpp b/recompiled/ppu_recomp_099.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3626,7 +3626,7 @@ diff -ruN a/recompiled/ppu_recomp_100.cpp b/recompiled/ppu_recomp_100.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3644,7 +3644,7 @@ diff -ruN a/recompiled/ppu_recomp_101.cpp b/recompiled/ppu_recomp_101.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3662,7 +3662,7 @@ diff -ruN a/recompiled/ppu_recomp_102.cpp b/recompiled/ppu_recomp_102.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3680,7 +3680,7 @@ diff -ruN a/recompiled/ppu_recomp_103.cpp b/recompiled/ppu_recomp_103.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3698,7 +3698,7 @@ diff -ruN a/recompiled/ppu_recomp_104.cpp b/recompiled/ppu_recomp_104.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3716,7 +3716,7 @@ diff -ruN a/recompiled/ppu_recomp_105.cpp b/recompiled/ppu_recomp_105.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3734,7 +3734,7 @@ diff -ruN a/recompiled/ppu_recomp_106.cpp b/recompiled/ppu_recomp_106.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3752,7 +3752,7 @@ diff -ruN a/recompiled/ppu_recomp_107.cpp b/recompiled/ppu_recomp_107.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3770,7 +3770,7 @@ diff -ruN a/recompiled/ppu_recomp_108.cpp b/recompiled/ppu_recomp_108.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3788,7 +3788,7 @@ diff -ruN a/recompiled/ppu_recomp_109.cpp b/recompiled/ppu_recomp_109.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3806,7 +3806,7 @@ diff -ruN a/recompiled/ppu_recomp_110.cpp b/recompiled/ppu_recomp_110.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3824,7 +3824,7 @@ diff -ruN a/recompiled/ppu_recomp_111.cpp b/recompiled/ppu_recomp_111.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3842,7 +3842,7 @@ diff -ruN a/recompiled/ppu_recomp_112.cpp b/recompiled/ppu_recomp_112.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3860,7 +3860,7 @@ diff -ruN a/recompiled/ppu_recomp_113.cpp b/recompiled/ppu_recomp_113.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3878,7 +3878,7 @@ diff -ruN a/recompiled/ppu_recomp_114.cpp b/recompiled/ppu_recomp_114.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3896,7 +3896,7 @@ diff -ruN a/recompiled/ppu_recomp_115.cpp b/recompiled/ppu_recomp_115.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3914,7 +3914,7 @@ diff -ruN a/recompiled/ppu_recomp_116.cpp b/recompiled/ppu_recomp_116.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3932,7 +3932,7 @@ diff -ruN a/recompiled/ppu_recomp_117.cpp b/recompiled/ppu_recomp_117.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3950,7 +3950,7 @@ diff -ruN a/recompiled/ppu_recomp_118.cpp b/recompiled/ppu_recomp_118.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3968,7 +3968,7 @@ diff -ruN a/recompiled/ppu_recomp_119.cpp b/recompiled/ppu_recomp_119.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -3986,7 +3986,7 @@ diff -ruN a/recompiled/ppu_recomp_120.cpp b/recompiled/ppu_recomp_120.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4004,7 +4004,7 @@ diff -ruN a/recompiled/ppu_recomp_121.cpp b/recompiled/ppu_recomp_121.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4022,7 +4022,7 @@ diff -ruN a/recompiled/ppu_recomp_122.cpp b/recompiled/ppu_recomp_122.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4040,7 +4040,7 @@ diff -ruN a/recompiled/ppu_recomp_123.cpp b/recompiled/ppu_recomp_123.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4058,7 +4058,7 @@ diff -ruN a/recompiled/ppu_recomp_124.cpp b/recompiled/ppu_recomp_124.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4076,7 +4076,7 @@ diff -ruN a/recompiled/ppu_recomp_125.cpp b/recompiled/ppu_recomp_125.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4094,7 +4094,7 @@ diff -ruN a/recompiled/ppu_recomp_126.cpp b/recompiled/ppu_recomp_126.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4134,7 +4134,7 @@ diff -ruN a/recompiled/ppu_recomp_127.cpp b/recompiled/ppu_recomp_127.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
@@ -4152,7 +4152,7 @@ diff -ruN a/recompiled/ppu_recomp_table.cpp b/recompiled/ppu_recomp_table.cpp
          g_trampoline_fn = 0; \
          _tf((void*)(ctx)); \
      } \
-+    ds_toc_check((void*)(ctx)); \
++    { const uint32_t _toc_r2 = (uint32_t)((ppu_context*)(ctx))->gpr[2]; if (_toc_r2 != 0x019B5040u && _toc_r2 != 0x019D3BACu && _toc_r2 != 0x019C448Cu) ds_toc_check((void*)(ctx)); } \
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
