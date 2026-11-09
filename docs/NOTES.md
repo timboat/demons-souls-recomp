@@ -2715,6 +2715,27 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       with -mavx2 and with -msse4.1, 0 mismatches.
     - A/B at Latria 4-2 uncapped (fix 126 vs this, 3 each): 73.2 / 73.2 / 73.2 -> 73.5 / 74.8 / 73.3 fps (small).
       Tour: every stop 59.3-60 mean, no aborts or halts.
+128. **First-sight pipelines built off the render thread: pop-in instead of freezes (2026-11-09, 5800X; the user
+     chose this visible change):**
+    - The remaining hitches walking into Boletaria 1-1 were the driver's CreateGraphicsPipelineState for pipelines
+      never seen before: 20-50 ms each, up to 12 in one frame (176 ms). Shaders already compiled (disk cache), so
+      fix 62 built them right on the drain thread. Once the driver cache has them they take ~1 ms, so only a first
+      visit to an area (or a new driver) hitched -- 13 and 18 frames over 60 ms in two cold 1-1 runs.
+    - Fix (libs/video/rsx_live_draw.c): LD_PSO_ASYNC_CREATE (default on; 0 = fix 62 as it was) sends those builds
+      to fix 62's workers too (default 4 workers instead of 2), and their draws skip until ready: the object shows
+      a frame or a few late. A driver-only build first gets up to LD_PSO_WAIT_US (default 3000) per frame of
+      waiting, so warm builds still show at once. Never skipped (built or waited for, as before): display-buffer
+      targets and full-screen passes (fix 62), plus draws into a colour target no draw rendered into this frame or
+      the last (a render-to-texture done once and sampled later would otherwise be lost, not late), depth-only
+      passes (a skipped shadow map changes the receivers' pipeline keys -- the whole lit scene would blink), and
+      draws inside an occlusion count. The live-draw test harness sets LD_PSO_ASYNC_CREATE=0 (one-shot draws).
+    - Review (2 lenses + verify) found the one-shot render-to-texture loss and the shadow-map blink (both fixed as
+      above); the rest was within the pop-in trade-off or refuted.
+    - Cold 1-1 (a fresh exe name per run, so the driver cache is empty), 140-290 s, frames over 60 ms: off 13 / 18,
+      worst 292 / 316 ms; first version on 5 / 4, worst 159 / 123 ms, almost all at the load-in itself (141-145 s).
+      After the load-in (146-290 s): off 9 / 14 frames over 60 ms (worst 167 / 220 ms); this version 3 / 2 (worst
+      94 / 75 ms) with no render-thread pipeline wait after 146 s -- what is left is not a pipeline build.
+    - Tour (7 stops): every stop 59.1-60 mean, no aborts or halts.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
