@@ -74,6 +74,12 @@ message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 if(MSVC)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:tlsGuards->)
 endif()
+# 64-byte function and loop alignment (docs/NOTES.md fix 131). Without it the speed of the SPU dispatcher and
+# the lifted code moved by several percent with unrelated edits (fixes 129 + 130 together: -4 to -6% at Latria,
+# each alone about -1%), from where the linker happened to place hot code. Costs ~3.6 MB of padding.
+if(MSVC AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(/clang:-falign-functions=64 /clang:-falign-loops=64)
+endif()
 
 # ---------------------------------------------------------------------------
 # ps3recomp runtime library

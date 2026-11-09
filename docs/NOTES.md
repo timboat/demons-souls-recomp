@@ -2763,6 +2763,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       are untouched, so REPORT.bat's head / tail / notable lines keep what they had.
     - Measured: a 5-minute 1-1 session 0.8 MB stderr + 0.4 MB stdout (was ~119 + ~41 MB); the 10-minute tour 1.4 + 0.8 MB.
       Latria 4-2 uncapped, same exe, PS3_VERBOSE=2 vs default: 71.6 / 70.8 / 70.9 -> 71.7 / 71.0 / 71.8 fps.
+131. **Hot code aligned to 64 bytes: speed no longer hostage to where unrelated edits land (2026-11-09, 5800X):**
+    - A same-batch check after fix 130 found Latria 4-2 uncapped 74.0 fps with fix 128 but 71.3 with 129 + 130,
+      although each of those alone measured 73.2 / 73.1 (bisect builds) and neither touches a hot path. Like the
+      dropped fix-125 experiment (-2.8% for moving a debug block out of a function), the cause is code placement:
+      unrelated edits shift where the linker puts the dispatcher and lifted code.
+    - Fix (project/CMakeLists.txt, clang-cl): /clang:-falign-functions=64 /clang:-falign-loops=64 for every C and
+      C++ file. exe +3.6 MB. (The LLVM-level -align-loops option no longer exists in clang 23.)
+    - A/B at Latria 4-2 uncapped (3 each, rotating): fix 128 72.5 / 73.5 / 73.2; fix 130 68.8 / 69.9 / 66.7; fix 130
+      aligned 71.3 / 71.9 / 72.3 -- most of the drop back.
+    - Tour (7 stops): every stop 59.7-60 mean, no aborts or halts.
     - Tour (7 stops): every stop 59.9-60 mean, no aborts or halts.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
