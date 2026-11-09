@@ -2682,6 +2682,18 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       buffer gives every guest function-pointer call a 0x268-byte frame and a stack cookie) was 2.8% SLOWER
       (69.4 / 69.2 / 69.4 -> 67.3 / 67.9 / 66.9 fps), cause not found.
     - Tour (7 stops, fixes 122-124): every stop 58.9-60 mean, no aborts or halts.
+106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
+    - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
+      (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
+      fix 101, had CRLF lines; step 5 turns the lifted code into LF first, so their context lines cannot match. Nothing
+      showed it on a PC whose recompiled files were already CRLF. Release v2026.11.08 (no CRs in this patch) is fine.
+    - An update hits the same thing: the new patch fails, patch_sync falls back to a relift, step 5 fails. That failure
+      leaves no port/.lifted, so the next BUILD sees "not set up", skips the patch and compiles the unpatched game
+      without a word. That trap is not fixed here; without this bug nothing reaches it.
+    - Fix: every CR out of patches/lifted-code.patch (781 bytes, one of them a stray "+<CR><CR>" line). The lifted code
+      is always LF when the patch goes on, so this file should have none; check for that when regenerating a section.
+    - Checked: a copy of the lifted code put back to the fresh-lift state and made LF as step 5 does. The old patch fails
+      on the nine files and the new one applies, each under core.autocrlf=false, true and input.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

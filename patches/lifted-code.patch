@@ -4103,7 +4103,7 @@ diff -ruN a/recompiled/ppu_recomp_126.cpp b/recompiled/ppu_recomp_126.cpp
          return;
  }
 -
-+
++
 +/* DS fix 101: resume the lifted function that called setjmp */
 +extern "C" void ds_sj_jump(ppu_context* ctx, uint32_t buf, uint32_t from_lr);
  void func_01674A5C(ppu_context* ctx) {
