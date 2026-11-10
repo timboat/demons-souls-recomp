@@ -8,7 +8,7 @@ on a PS3 runtime and a Direct3D 12 renderer. It is not an emulator.
 > on your PC from **your own disc image**.
 
 **Community Discord:** [discord.gg/gTvrZZ75G](https://discord.gg/gTvrZZ75G) for questions, setup help and
-screenshots. Bug reports with a REPORT.bat zip are best as a GitHub issue.
+screenshots. Bug reports with a REPORT.bat zip are best as a GitHub issue. Thanks to MrSuS60 for having me in their Discord, and a special thanks to zackage7 who has been an immense help in testing and polishing.
 
 ## Status
 
