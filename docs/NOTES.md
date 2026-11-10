@@ -86,10 +86,10 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
    microcode to VRAM via copy jobs in a CellSpursJobList, so every fragment program slot stayed zero.
    Plus a second runtime job binary (fp B1463A6F2DF960AC, 384 B, the DMA-copy job) lifted via lift_spurs_jobs.py.
 7. **1D textures (rsx_live_draw.c):** decode rejected dimension 1; now decoded as height-1 2D.
-- Debug switches added: LD_PSO_DBG=2/3 (hexdump / distinct FP regs), GCM_SUBCH_LOG=<n>,
-  SPU_PUTWATCH=<ea>[,len], LFQ_DBG (also dumps flag+0x80/+0x100 when an EF wait blocks).
+- Debug switches added: LD_PSO_DBG=2/3 (hexdump / distinct FP regs), GCM_SUBCH_LOG=\<n>,
+  SPU_PUTWATCH=\<ea>[,len], LFQ_DBG (also dumps flag+0x80/+0x100 when an EF wait blocks).
 - All runtime edits: `patches/ps3recomp-local.patch` (re-apply after re-cloning ps3recomp).
-- Frame dumps: LD_FRAME_DUMP=<dir> LD_FRAME_DUMP_EVERY=<n> (PPM). PrintWindow/screen grabs of the D3D12
+- Frame dumps: LD_FRAME_DUMP=\<dir> LD_FRAME_DUMP_EVERY=\<n> (PPM). PrintWindow/screen grabs of the D3D12
   window come out blank -- use the dumps.
 
 8. **Zombie SPURS tasks (spu_workload.c / spu_channels.c / cellSpurs.c):** Shutdown/JoinTaskset were no-ops,
@@ -140,10 +140,10 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     Fix: `SPURS_JC_EVENTS=0` turns the synthetic events off (DeS's chains send none); run_capture.ps1 sets it.
     3 clean runs: all reach ref pos 148/148 and show the system-data auto-save notice (autosave_notice.png).
     Diagnostics added: the watchdog now prints `in syscall N` per guest thread; SPU_EVT_LOG=1 logs every SPU
-    user-event send + result; EVT_PUSHLOG_MAX raises EVT_PUSHLOG's 200-line cap. PS3_EVQSTAT=<n> (existing)
+    user-event send + result; EVT_PUSHLOG_MAX raises EVT_PUSHLOG's 200-line cap. PS3_EVQSTAT=\<n> (existing)
     showing `pending=50` was the tell.
 16. **Input + intro movie -> title screen:** pad input goes through the runtime's existing `PAD_SCRIPT`
-    ("<sec>:<mask>,...", CROSS 0x4000, START 0x0008; latched, held \~40 polls). Cross at 30 s dismisses the
+    ("\<sec>:\<mask>,...", CROSS 0x4000, START 0x0008; latched, held \~40 polls). Cross at 30 s dismisses the
     auto-save notice; the logos follow (Atlus, SCE, Japan Studio, FromSoftware, Havok). The game then plays
     movie/ds_advertise.pam through cellSail, which ps3recomp only stubs: it reports Boot/OpenStream done but
     plays nothing, and the game never calls Start -- black screen for good (Start doesn't skip it). RPCS3's
@@ -167,7 +167,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     -> children elf 0x179CC00/0x17ACD00 = images 5/6). Never started, they held their ids; after \~60 frames all
     128 ids were taken and every later CreateTask failed. Now 64 entries, released on JoinTaskset and reset on
     CreateTaskset; images 3-6 run every frame and no id is ever exhausted.
-    Debug added: TS_SLOT_DBG=<taskset> (each id taken / exit + enabled bitset), LFQ_POPLOG=1 (every element
+    Debug added: TS_SLOT_DBG=\<taskset> (each id taken / exit + enabled bitset), LFQ_POPLOG=1 (every element
     cellSpursQueuePopBody returns), SPU_ATOM_FULL=1 also prints the whole line in SPU_ATOM_EAS traces, RETURNED
     lines name taskset/task, start-task lines show the TaskInfo args.
 19. **SPURS queue = libsre's layout, not an LFQueue (cellSpurs.c):** the particle system's level-load flush
@@ -185,7 +185,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     takes that lock itself -- the first non-empty pop deadlocked the render thread on it.
     Result: 9407 pops in a 320 s run (first {1,5}); the tutorial loads (Mephistopheles card), the opening
     narration plays as subtitles over black, and gameplay starts with the HUD (in_game_hud.png).
-    Debug added: SPU_DMATRACE_BYTES / _SKIP / _MAX / _AFTER_WATCH, SPU_DMAWATCH_EA=<ea>[,<ea>] (log a GET's
+    Debug added: SPU_DMATRACE_BYTES / _SKIP / _MAX / _AFTER_WATCH, SPU_DMAWATCH_EA=\<ea>[,\<ea>] (log a GET's
     data when it changes), QUEUE_DBG=1, LFQ_POPLOG=1 now logs SPURS-queue pops too.
 20. **Black 3D world = exposure 0** (stopgap REMOVED -- real fix is 21): geometry, textures, lighting and the
     shadow map all work (per-draw dumps: LD_DRAW_DUMP + RSX_DRAW_CSV(_FROM) show the silhouettes being drawn
@@ -200,11 +200,11 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     (GCM_SEMA_ACQUIRE=1 changes nothing), ZPASS reports (only ZCULL stats 2/3 are read), SPU reads of the
     scene target, NV0039 copies (only inline transfers are used). Most likely it waits on a GPU result that
     the live-draw renderer never writes back to guest memory (no render-target write-back exists).
-    STOPGAP: LD_EXPOSURE_STOPGAP=<f> replaces x of any inline constant that is exactly (0,2,0,1);
+    STOPGAP: LD_EXPOSURE_STOPGAP=\<f> replaces x of any inline constant that is exactly (0,2,0,1);
     run_capture.ps1 sets 3.0 -> the tutorial corridor and the opening cutscene are visible
     (tutorial_visible.png, opening_cutscene.png; the cutscene looks over-bright). The stopgap is gone (fix 21).
-    Tools/debug added: tools/dcx.py (DCX EDGE/DFLT decompressor), LD_FPCONST=<pso>[,_FROM] (constants,
-    ucode words, copies of the program, main+local scan), LD_MEMDUMP=<dir>, GCM2D_WATCH=<ea>,<len>
+    Tools/debug added: tools/dcx.py (DCX EDGE/DFLT decompressor), LD_FPCONST=\<pso>[,_FROM] (constants,
+    ucode words, copies of the program, main+local scan), LD_MEMDUMP=\<dir>, GCM2D_WATCH=\<ea>,\<len>
     [+_EVERY] (inline writes + FIFO address), REPORT_HIST=1, 2D-engine logs now on stderr.
 21. **Real auto-exposure (replaces the fix 20 stopgap):** the exposure is a GPU result read back by the CPU.
     Each frame the game reduces scene luminance through F_X32 (SURFACE_FORMAT colour 0xD) targets in local
@@ -231,8 +231,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     How it was found: PPU_RWATCH on 0xC13AB840 (who reads it), PPU_WWATCH on the constant object, a
     temporary print in the lifted func_0006BD38, and decoding the adaptation program's ucode by hand.
     Tools/debug added: tools/dis_eboot.py (EBOOT disassembly with TOC/string annotations),
-    LD_TEXBIND_WATCH=<offset hex> (how a texture at that offset is bound), LD_FPCONST_SURF=<offset hex>
-    (the LD_FPCONST dump for draws into that surface), PPU_WVAL_MAX=<n>.
+    LD_TEXBIND_WATCH=\<offset hex> (how a texture at that offset is bound), LD_FPCONST_SURF=\<offset hex>
+    (the LD_FPCONST dump for draws into that surface), PPU_WVAL_MAX=\<n>.
 22. **Whole frame blurred + fog missing = depth read as a colour texture:** the scene buffer (0x7A0000) is
     sharp, but a full-screen pass (shader cc2a6349..., colour mask 0x01000000 = alpha only) reads the depth
     buffer 0xB50000 as an A8R8G8B8 texture, rebuilds depth as dot(tex.wxy, c) -- the RSX D24S8 word read
@@ -245,7 +245,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     the R32F depth snapshot repacked into those bytes by a compute pass (once per depth write; RGBA8 host
     texture R = mid, G = low, B = 0, A = high byte). LD_DEPTH_AS_COLOR=0 = old behaviour.
     Result: sharp image and visible fog (sharp_tutorial.png, blur_before_after.png); 26-27 fps.
-    Found with LD_DRAW_DUMP + new LD_DRAW_DUMP_FRAMES=<n> (dump every draw of n consecutive frames): the
+    Found with LD_DRAW_DUMP + new LD_DRAW_DUMP_FRAMES=\<n> (dump every draw of n consecutive frames): the
     post chain crosses the live-draw frame counter, so one frame never held the whole chain.
 23. **Red Create Profile face = fragment source precision modifiers ignored:** the skin shader (ds_flver
     program at 0x388960; table maps its constants to globals 0x5C-0x67, 0x87, 0x8B, 0x9C) ends in a fog
@@ -257,18 +257,18 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     (rsx_fp_decompiler.c): emit those clamps on every non-branch source (RPCS3 ClampValue). Shader disk
     cache bumped to v3. Result: natural face and body (create_profile_fixed.png); gameplay unchanged or
     better -- the sky through the tutorial arch now shows clouds and the palace (tutorial_sky.png).
-    Found with LD_PS_OUT=<fp offset hex>:<hlsl expr> (replace one program's colour output with an
-    intermediate value), LD_HLSL_DUMP now also writes hlsl_fp<loc>_<off>.ps/.vs.txt, LD_FPCONST_VPC=<n>,<k>
+    Found with LD_PS_OUT=\<fp offset hex>:\<hlsl expr> (replace one program's colour output with an
+    intermediate value), LD_HLSL_DUMP now also writes hlsl_fp\<loc>_\<off>.ps/.vs.txt, LD_FPCONST_VPC=\<n>,\<k>
     (VS constants), vertex attributes in the LD_FPCONST dump, LD_TEXBIND_WATCH prints guest texels.
     Reaching Create Profile needs a first-time start: move gamedata/.../savedata/BLUS30443DEMONSS005 aside
     (then it shows Brightness Setting first; PAD_SCRIPT ...,122:0x4000,140:0x4000 gets past it).
 24. **Live input (keyboard + mouse, or an XInput pad):** the runtime already polled XInput (Xbox pads, port
     0..3) with a keyboard fallback on port 0 when no pad is present, but the fallback's layout (arrows,
     Z/X/A/S) had no camera stick. libs/input/cellPad.c adds PAD_KEYMAP=souls: WASD = left stick, mouse
-    (recentred each poll while the window has focus; F1 toggles; PAD_MOUSE=0 never; PAD_MOUSE_SENS=<f>,
+    (recentred each poll while the window has focus; F1 toggles; PAD_MOUSE=0 never; PAD_MOUSE_SENS=\<f>,
     default 6) and IJKL = right stick, LMB R1, Shift R2, RMB L1, Ctrl L2, Space Circle, E Cross,
     F Triangle, R Square, Tab/MMB R3, C L3, arrows d-pad, Enter Start, Backspace Select. Test hook
-    PAD_KEY_SCRIPT="<sec>:<key>:<dur>,..." feeds the same mapping without the focus check: walking through
+    PAD_KEY_SCRIPT="\<sec>:\<key>:\<dur>,..." feeds the same mapping without the focus check: walking through
     the arch, camera turn, attack (stamina drops) and roll all reach the game (keyboard_test.png).
     Launcher: PLAY_DEMONS_SOULS.bat (project root) -- same env as run_capture.ps1, no PAD_SCRIPT, no
     timeout, logs to logs/last_run_*.txt; DES_NAME sets the name the OSK stub answers with.
@@ -284,9 +284,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     Create Profile and gameplay (create_profile_shield.png, shield_fixed.png). Weapons/other rigid
     attachments with the same layout are fixed by the same change.
     Found by diffing each draw of the Create Profile body render (draws that change 0 pixels) and new
-    debug: LD_VTXDUMP_VERTS=<n source verts>[,<c0>,<count>] (decoded attrs, raw vertex bytes, every
+    debug: LD_VTXDUMP_VERTS=\<n source verts>[,\<c0>,\<count>] (decoded attrs, raw vertex bytes, every
     other copy of vertex 0 in memory, VS constants; needs RSX_DRAW_CSV since it runs in the CSV
-    writer), LD_VTXDUMP_SURF=<offset hex> (vertex counts of the draws into a surface),
+    writer), LD_VTXDUMP_SURF=\<offset hex> (vertex counts of the draws into a surface),
     LD_FPCONST_TEX0 / LD_FPCONST_VERTS (only reached when a PSO is built -- get_pso caches).
 26. **Audio (superseded -- fixed in 29), two real fixes found on the way:**
     a) cellAudioSetNotifyEventQueue got key 0: MultiStream's mixer thread (higher priority) creates
@@ -319,7 +319,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Pacing: SetFlipMode(2 = HSYNC); vblank handler func_009F7018 counts vblanks (0x1B50434) and posts
       a semaphore once count >= target (0x1B50E34); func_00A16360 sets target = count + obj[0xB]
       (obj = HighGraphics' frame object + 0x718). obj[0xB] is 1 the whole time, so the game asks for
-      60 fps; DES_FRAME_INTERVAL=<n> overrides it (port patch in lifted ppu_recomp_060.cpp; logs each
+      60 fps; DES_FRAME_INTERVAL=\<n> overrides it (port patch in lifted ppu_recomp_060.cpp; logs each
       change as [des] frame interval -- keep it in patches/recompiled-port-patches.diff after a re-lift).
     - Why 31 and not 62: PS3_FTRACE timeline (tools/ftrace_report.py) shows a serial chain per frame:
       HighGraphics submits for \~3 ms, the FIFO then stays empty until \~11 ms (command generation
@@ -363,7 +363,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
         a hit re-hashes the guest vertex ranges it was converted from and uploads the stored vertices +
         topology indices. \~70% of draws hit, \~18 MB cached. Misses use rsx_vertex_fetch_many
         (attribute-major loops) instead of one vertex at a time. Drain 12-13 ms -> \~5 ms.
-      * Mid-frame kicks (LD_KICK_DRAWS=<n>, default 64, 0 = off): every flush was synchronous and the
+      * Mid-frame kicks (LD_KICK_DRAWS=\<n>, default 64, 0 = off): every flush was synchronous and the
         only one per frame was at present, so the GPU started the frame after the CPU had recorded all
         of it and the RSX thread waited \~4 ms. Kicks submit every 64 draws without waiting (own
         allocator pool, nothing reused before the next waited flush). Fence wait 4.0 -> 1.0 ms/frame.
@@ -381,7 +381,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       The frame skip only covers big hitches -- below 60 the game runs slightly slow (57 fps = 95%).
     - PAD_NO_XINPUT=1 (cellPad.c): ignore Xbox pads. With a controller plugged in the keyboard layout
       (and PAD_KEY_SCRIPT) is never polled, and a test window would read the real pad; runs.sh sets it.
-    - Debug added: SEM_TRACE=<id|-1> + SEM_TRACE_AT=<s> (sys_semaphore.c: waits/posts with three guest
+    - Debug added: SEM_TRACE=\<id|-1> + SEM_TRACE_AT=\<s> (sys_semaphore.c: waits/posts with three guest
       return addresses), scratchpad bench.sh (scripted tutorial run + fps + timeline), prof.sh
       (thread CPU + IP samples of one thread at 205 s), fscan.py (float loads by value).
 29. **Sound and music WORK -- SPU threads could not receive events:**
@@ -411,7 +411,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       pitch (so correct speed), tutorial ambience and attack/roll sounds; lag-1 autocorrelation
       0.95-0.996 (real audio, not garbage) -- but every other block was silent, see fix 30. Same in 60 fps mode (pitch unaffected by PS3_CLOCK_SCALE: the
       audio thread is paced by real time). menu_music.wav / tutorial_audio.wav are clips of that run.
-    - Debug added: SPU_LISTTRACE=<image> (spu_dma.h: each MFC list element), AUDIO_PEAK shows both ports.
+    - Debug added: SPU_LISTTRACE=\<image> (spu_dma.h: each MFC list element), AUDIO_PEAK shows both ports.
       Method that found it: function-entry counts of the MagicOrchestra code (temporary PPU_MM_SNAP
       override, scratchpad fncount.py), MO init traced call by call (instr077.py), then IP sampling of
       the spinning synth2 thread -> its lifted loop is the stop 0x110 receive.
@@ -456,9 +456,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       procedures now call rsx_window_closing(): 3 s after WM_CLOSE the process flushes (on a side thread,
       at most 1 s -- fflush(NULL) can block on a stream another thread holds) and TerminateProcess-es.
       Sandbox test: WM_CLOSE to the TEST window -> gone at t+3 s, "[exit] window closed" logged.
-    - LD_F12_CAPTURE=<dir> (now set in PLAY_DEMONS_SOULS.bat -> DemonsSouls\captures): F12 with the game
+    - LD_F12_CAPTURE=\<dir> (now set in PLAY_DEMONS_SOULS.bat -> DemonsSouls\captures): F12 with the game
       window in front records the next present interval: every draw's target before the draw
-      (draw_f<frame>_i<idx>_<surf>.ppm) and draws.csv, in <dir>\f<frame>. LD_CAPTURE_AT=<frame> = the same
+      (draw_f\<frame>_i\<idx>_\<surf>.ppm) and draws.csv, in \<dir>\f\<frame>. LD_CAPTURE_AT=\<frame> = the same
       without a key. For glitches that cannot be scripted (the Nexus / cutscene white-and-green shapes).
     - Boletaria (user: fps tanks): sandbox load of the user's character at the m02 archstone = \~30 fps.
       Thread CPU: spu job 103%, HighGraphics 77%, synth2 62%, MOStreamingThread 48%, live-draw thread 45%.
@@ -477,7 +477,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       smoothed 1/4 per step. Result: Boletaria 39.4 steps/s, step 0.0254, game time 1.000; tutorial still
       60.0 steps/s, step 1/60, 1.000. Walk test (3 s of W at 160 s, adaptive 60 vs DES_FPS=30): same spot.
     - Lock-line lock: SPU_JOB_STATS=1 (spu_workload.c; per-image async task counts/time + lock stats every 5 s)
-      showed 7.2 M acquisitions/s, 690 k/s contended, 726 ms/s spent waiting; SPU_LOCK_SITES=<file> (callers by
+      showed 7.2 M acquisitions/s, 690 k/s contended, 726 ms/s spent waiting; SPU_LOCK_SITES=\<file> (callers by
       return address, rip_sample.py format) put 98% on SPU_WrEventAck -- SPURS kernels/dispatchers ack events
       in their poll loops. event_status updates are interlocked OR/AND already, so the lock there protected
       nothing: removed (SPU_EVENTACK_LOCK=1 = old). Now 1.7 M/s, 29 ms/s waiting; img7 tasks \~30% cheaper.
@@ -553,16 +553,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       LD_KICK_DRAWS=16 (worse GPU tail).
     - Tools: scratchpad all_sample.py (every thread; misses per-task SPU threads), capalign.py (two
       captures aligned by draw signature), blackframes.py; LD_PRESENT_DBG=1 (scanned-out surface),
-      LD_CAPTURE_AT=<f1,f2,...>. Verified: tutorial x3, Boletaria standing + walking + a fight, save &
+      LD_CAPTURE_AT=\<f1,f2,...>. Verified: tutorial x3, Boletaria standing + walking + a fight, save &
       quit -> reload, the Nexus cutscene.
 37. **Boletarian Palace judder ("60 fps but not smooth") -- present pacing:**
-    - Measured with DES_STEP_LOG=<file> (port debug in ppu_recomp_011.cpp func_0001B8D0: "<us> <step>"
-      per game step) + LD_PRESENT_LOG=<file> (rsx_live_draw.c: "<us> <frame>" per Present), both on the
+    - Measured with DES_STEP_LOG=\<file> (port debug in ppu_recomp_011.cpp func_0001B8D0: "\<us> \<step>"
+      per game step) + LD_PRESENT_LOG=\<file> (rsx_live_draw.c: "\<us> \<frame>" per Present), both on the
       ps3_qpc_us clock, 60 s windows from *_FROM seconds; scratchpad jitter.py. Boletaria: 64.5
       presents/s, present-interval sd 8.4 ms, 12% of presents under 4 ms apart then 25-40 ms gaps --
       when the game falls behind, HighGraphics renders two frames back to back and the walker reaches
       both flips together: 30 fps with doubled motion, though the counter says \~60.
-    - LD_PRESENT_PACE=<fraction> (rsx_live_draw.c, before Present; set to 0.85 in the PLAY bat; off by
+    - LD_PRESENT_PACE=\<fraction> (rsx_live_draw.c, before Present; set to 0.85 in the PLAY bat; off by
       default in the runtime): a present arriving sooner than fraction x the running average interval
       waits until then (<= 20 ms; stalls over 50 ms do not enter the average). Boletaria: present sd
       8.4 -> 3.3 ms, no sub-4 ms presents, 59.1-59.8 steps/s; tutorial sd 1.7 ms at 59.8. 0.93 was too
@@ -582,7 +582,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       that submit's fence passes (cellGcmSys.c gcm_report_store_value; g_gcm_zpass_by_host makes the
       walker leave type-1 values alone). One frame late at most -- the game checks its own label and
       reads the previous value meanwhile. LD_OCCLUSION=0 = old 0xFFFF; LD_OCC_DBG=1 logs reports;
-      LD_CAPTURE_ON_ZPASS=<n> captures the frame after the n-th report.
+      LD_CAPTURE_ON_ZPASS=\<n> captures the frame after the n-th report.
     - Verified by reading back the depth plane at the probe (debug code since removed): in Stonefang
       and the Nexus intro the probe always sits behind real geometry (stored depth 0.97-0.998 vs the
       probe's 0.9997), sky pixels hold depth above the probe, so 0 there is the right answer. No spot
@@ -590,7 +590,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Gotcha: NV4097 0x1D84 is ZCULL_EN, 0x1D7C AA control, 0x1D8C ZSTENCIL_CLEAR_VALUE -- the ZPASS
       enable is 0x17CC.
 39. **Frame rate across the five worlds (60 fps mode, LD_PRESENT_PACE=0.85, sandbox):**
-    - DES_WARP_AT=<sec>:<area>,<block>,<point> (port debug in ppu_recomp_011.cpp func_0001B8D0): sets the
+    - DES_WARP_AT=\<sec>:\<area>,\<block>,\<point> (port debug in ppu_recomp_011.cpp func_0001B8D0): sets the
       stage manager's next map / spawn point / request byte the way the event scripts'
       proxy:WarpNextStage does (lua_WarpNextStage 0x451430). World starts (SCRIPT/m01_00_00_00.lua):
       2,0,999 Boletaria 1-1; 3,1,999 Shrine of Storms; 4,0,999 Tower of Latria; 5,0,999 Valley of
@@ -622,7 +622,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       idle F frames) reused for ...". Sandbox: Shrine, two deaths, no static, world normal, all 403
       draws of a soul-form frame execute, \~58 steps/s (soul_static_fix.png).
     - The zeta table (also 64) was not near full: 6 entries in the same run.
-    - Capture aid: draws.csv rows now carry fp=<loc>_<offset> (matches LD_HLSL_DUMP's hlsl_fp files;
+    - Capture aid: draws.csv rows now carry fp=\<loc>_\<offset> (matches LD_HLSL_DUMP's hlsl_fp files;
       the PSO-key file names drift with per-frame constants). LD_F12_CAPTURE wants an absolute path --
       the sandbox runs from testenv, a relative one silently writes nothing.
 41. **Character name typed in a text box (cellOskDialog):** the OSK stub answered every request at
@@ -637,7 +637,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - cellPad's focus test counted any window of the process as the game, so typing in the box would
       also have pressed E = Cross / Enter = Start: pad_host_window_focused() is false while
       g_osk_host_window_open. cellSysutilQueueEvent gained a producer lock (the box posts from its thread).
-    - Sandbox check: OSK_BOX_AUTO=<text>[|<file.bmp>] (TEST) makes the box type <text>, save a picture of
+    - Sandbox check: OSK_BOX_AUTO=\<text>[|\<file.bmp>] (TEST) makes the box type \<text>, save a picture of
       itself and press OK after 1.5 s. "Tester" -> log "text box open (limit 16 chars)", "typed Tester",
       Create Profile shows Name Tester, the profile saved with it, the Nexus intro follows
       (name_entry.png). FindWindow from a separate tool process cannot see the sandboxed game's windows,
@@ -686,7 +686,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - While on: the flag is set, HP -> max, MP -> max, stamina (+3D4 -> +3D8) -> max each step; F9 off clears the flag (also a script-set
       one -- harmless outside the tutorial). The patch calls the lifted lookup with a saved/restored
       ppu_context. Runtime helpers (cellPad.c): ps3_host_hotkey(vk) = edge-triggered, game window in front
-      (or PAD_KEY_SCRIPT, which now knows F9); ps3_host_title_suffix(s) sets "<title>  [GOD MODE - F9]"
+      (or PAD_KEY_SCRIPT, which now knows F9); ps3_host_title_suffix(s) sets "\<title>  [GOD MODE - F9]"
       from a helper thread (SetWindowText waits for the window's thread).
     - Sandbox (user's Palace save): F9 at 160 s -> HP 174 -> 276, MP 7 -> 106 (bar full), off at 180 s.
       Stamina: 10 s of W + SPACE (sprint) with it off 91 -> 54 -> 6; the same sprint with it on stays 91.
@@ -702,7 +702,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       link into DemonsSouls\game -- writing through it would change the normal game), and checks no
       replaced file still shares an inode with game\. List in game_remaster\REMASTER_INSTALLED.txt.
       To remove: delete game_remaster (the normal game keeps its own links).
-    - PLAY bat: DES_GAME=<folder under DemonsSouls> (default game) picks the EBOOT path, and with it the
+    - PLAY bat: DES_GAME=\<folder under DemonsSouls> (default game) picks the EBOOT path, and with it the
       VFS root (boot_main derives it from the EBOOT path); title "... - PC Remaster mod". Saves, hdd1
       cache and the shader disk cache are shared. Sandbox runs.sh takes DES_GAME too.
     - Sandbox, user's Palace save: VFS root game_remaster, 54-61 fps, no pso-fail / surface-table lines;
@@ -716,14 +716,14 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       F8 in the game window = "mark" (the player saw a stutter); title shows [RECORDING - F8 = stutter, N marked].
       (Not F10: that opens the window menu.)
     - One file, one clock: present lines (+ col 10 = render-thread CPU us since the previous present) and
-      "# <us> <kind>" notes from ps3_perf_note() (rsx_live_draw.c, SRW-locked): step (011.cpp: step s,
+      "# \<us> \<kind>" notes from ps3_perf_note() (rsx_live_draw.c, SRW-locked): step (011.cpp: step s,
       right stick, pad source 1 XInput / 2 kb+mouse, host polls, mouse dx/dy, game-thread CPU us via
       ps3_thread_cpu_us = QueryThreadCycleTime / TSC rate), mark, pso (compile >= 1 ms), read (ppu_fs.cpp
       cellFsRead / AIO reads >= 2 ms with path). cellPad: ps3_host_pad_debug(); "F8" key-script name.
       God-mode and recording share the title suffix (des_title() in 011.cpp).
     - perf_report.py [perf.txt | folder] (default newest perf\*): display Hz + refreshes-per-frame
       histogram, present/step interval percentiles, every hitch (frame up longer than usual, or present
-      > 1.5x median) with causes (shader compile, slow reads, game step late + thread busy/waiting by CPU
+      \> 1.5x median) with causes (shader compile, slow reads, game step late + thread busy/waiting by CPU
       time, Present blocked, GPU wait, renderer late), F8 marks with the hitches in the 3 s before,
       worst N, hitches per 10 s, camera-input stats. --from/--to seconds, --top N.
     - Sandbox (user's Palace save, 50 fps, IJKL camera spin): display 99.75% at 2 refreshes, \~40 hitches/min
@@ -737,10 +737,10 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       (scn020001, "the main gate opens") and turns on the fog walls. The user had pulled the two tower levers.
 47. **Stutter: every \~0.75 s a repeated frame + a lost frame -- double present of one flip (2026-10-30):**
     - Found with the fix 46 recorder + new stack sampling (DES_PERF_STACKS=1: a sampler thread suspends the
-      main thread -- and DES_PERF_STACK_THREADS=<guest names>, and "rsx" -- every 4 ms once a step is
+      main thread -- and DES_PERF_STACK_THREADS=\<guest names>, and "rsx" -- every 4 ms once a step is
       DES_PERF_STACK_MS (28) ms old and logs exe RVAs; symbolise with llvm-symbolizer + the PDB; scratchpad
       stacks.py) and flip events in the perf log (cellGcmSys.c: vb, vbh = vblank handler delivered,
-      fdone, flipreq <buf> <in_fifo>, flipexec).
+      fdone, flipreq \<buf> \<in_fifo>, flipexec).
     - Chain: late steps sat in sys_cond_wait under func_00D1E228 (Class0187CB90 vf12 posts a message to
       HighGraphics and waits); HighGraphics sat in HighGraphics_FrameLoop's DLSingleSignal semaphore,
       which the vblank handler posts. The event timeline showed: at every repeat, a 2nd Present 1-3 ms
@@ -757,7 +757,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       the flag. Sandbox, Palace camera spin, 75 s window:
         50 fps: repeated frames 97/min -> 0.8/min, steps 48.4 -> 50.0/s, worst step 54 -> 31 ms.
         60 fps (A/B with PS3_PRESENT_ONCE=0): repeats 149 -> 11/min, steps 58.1 -> 60.0/s, steps
-        > 30 ms 77/min -> 0.
+        \> 30 ms 77/min -> 0.
       Fix 37's "paired catch-up presents" (LD_PRESENT_PACE) were very likely these duplicates; pacing
       left on. GCM_PUMP_THREAD=1 was tried first: no effect (delivery wasn't the problem).
     - perf_report.py now prints "repeated frames", counted by flip: each present shows the latest flipreq
@@ -778,7 +778,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       presents 13-28 ms apart; now and then a frame missed its refresh (3 then 1 refresh).
     - Reproduced from a copy of the user's save (testenv/save_user_1030, scratchpad bol2.sh SAVE=...):
       render CPU steady \~15 ms per frame there (1-2 ms on the title / load screens). New sampler mode
-      DES_PERF_STACK_EVERY=<ms> samples the watched non-main threads ("rsx", named guest threads)
+      DES_PERF_STACK_EVERY=\<ms> samples the watched non-main threads ("rsx", named guest threads)
       continuously; scratchpad cmpstk.py / hotlines.py summarise. Renderer thread there, self time:
       sink_end_impl \~20% (memcpy of each draw's converted vertices into the upload ring, line \~8519),
       ld_vc_hash \~8% (vertex-cache mutation hash of guest vertex data every draw), texture_content_hash
@@ -837,7 +837,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       Latria 3.11 -> 0.21 ms; render CPU, cadence and pictures unchanged.
     - Not reproduced in the sandbox: the user's save (testenv/save_user_1030b; profile list is most-
       recent first = no DOWN keys) loads mid-fight in the torch hall; forced late steps
-      (new DES_HITCH_AT=<s>:<ms>,... port debug in ppu_recomp_011.cpp: Sleep on the main thread once)
+      (new DES_HITCH_AT=\<s>:\<ms>,... port debug in ppu_recomp_011.cpp: Sleep on the main thread once)
       at the scaffolding, at the Palace start and pinned to one CCD (scratchpad runs.sh AFF=FFFF) all
       recovered after one pair. Their stretches need heavier moments than the tests reach (combat).
     - Perf log: last column = draws recorded for the frame. perf_report.py counts "game catch-up
@@ -850,7 +850,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       had the game logic at 1.67x. Renderer numbers stand; pacing results there are not the user's.
       scratchpad spot2.sh sets S60=1 (DES_60FPS=1) by default.
 51. **Showcase capture (LD_VIDEO) + launcher features + the 2026-10-31 recording (2026-10-31):**
-    - LD_VIDEO=<out.mkv> (rsx_live_draw.c ldv_frame, called after the LD_RECORD block in present): the
+    - LD_VIDEO=\<out.mkv> (rsx_live_draw.c ldv_frame, called after the LD_RECORD block in present): the
       presented surface is copied into a ring of 4 readback buffers (fence = fence_value + 1: both Signal
       sites submit g.list first), picked up at a later present once the fence passed, memcpy'd into a
       12-deep queue; a writer thread puts frames on an LD_VIDEO_FPS grid (default 60) by present time
@@ -858,8 +858,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       "ffmpeg"; LD_VIDEO_ENC default h264_nvenc p6 cq 18). Matroska survives the sandbox's hard kill
       (remux with -c copy). Sandbox run: 19,815 presents, 0 dropped, 60.0 fps held while capturing.
       ffmpeg = imageio-ffmpeg wheel from PyPI in the session scratchpad (ffvenv), NVENC included.
-    - DES_WARP_AT now takes a list "<s>:<a>,<b>,<p>;..." (up to 16, ppu_recomp_011.cpp);
-      PAD_STICK_SEQ="<from>:<until>:lx,ly,rx,ry;..." (cellPad.c, up to 32 holds, stick re-centred when a
+    - DES_WARP_AT now takes a list "\<s>:\<a>,\<b>,\<p>;..." (up to 16, ppu_recomp_011.cpp);
+      PAD_STICK_SEQ="\<from>:\<until>:lx,ly,rx,ry;..." (cellPad.c, up to 32 holds, stick re-centred when a
       hold ends -- the first version left it deflected and the camera kept turning).
     - Showcase (scratchpad showcase.sh): user's save copy (testenv/save_user_1031, loads in Stonefang),
       60 fps mode, DES_GOD=1, warps 160 s Boletaria (2,0,999) / 205 Shrine (3,1,999) / 250 Latria
@@ -1005,7 +1005,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       Pinned uncapped A/B with PS3_VERBOSE=0: no fps gain (uncapped runs vary 94-117 fps run to run), and
       the log only shrinks a third -- most lines (spu_workload dispatch / RETURNED / taskset, with an
       fflush each) print regardless of PS3_VERBOSE.
-    - New: "# <us> pos <AA,BB> <x> <y> <z> <block id>" in the perf log once a second and with every F8
+    - New: "# \<us> pos \<AA,BB> \<x> \<y> \<z> \<block id>" in the perf log once a second and with every F8
       (port patch in ppu_recomp_011.cpp func_0001B8D0, des_player_where): the character from
       func_004142A8(obj, 10000) as god mode; the position from lua_SaveChrPos's virtual call
       chr->vtable[+0x70](out, chr) (x, y, z BE floats); block id = lua_GetBlockId's func_00419610(obj);
@@ -1013,16 +1013,16 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       Boletaria's blocks share m02_00 (Palace = 02,00 block 3), Latria = 04,00 block 0. The stage
       manager's +0x8 is only the warp request (-1 once done; no current map id in its first 0x100 bytes).
     - perf_report.py prints per mark "player: area 4 (Tower of Latria) block 0 at x,y,z" (+ 5 s before).
-    - Test helpers: DES_TELEPORT_AT=<s>:x,y,z[;...] (seconds from the first step) puts the player there via
-      lua_LoadChrPos's func_00273BE0(chr, v2 = (x, y, z, 0)); DES_WHERE=<s> prints the position. Recipe:
-      DES_WARP_AT=<s>:<area>,<block>,999 once in game (a warp requested during the save's load never
+    - Test helpers: DES_TELEPORT_AT=\<s>:x,y,z[;...] (seconds from the first step) puts the player there via
+      lua_LoadChrPos's func_00273BE0(chr, v2 = (x, y, z, 0)); DES_WHERE=\<s> prints the position. Recipe:
+      DES_WARP_AT=\<s>:\<area>,\<block>,999 once in game (a warp requested during the save's load never
       settles), then DES_TELEPORT_AT after the load. Checked: user's Palace save -> warp 4,0,999 at 125 s
       -> teleport at 170 s -> standing on the Latria walkway at the logged x,y,z.
     - Follow-up (2026-11-01 01:40): the area came from the last map .mcp opened, which went stale --
       revisiting a world does not reopen it (Nexus -> Latria kept saying "Nexus"). Now both area and
       block come from the game: lua_GetBlockId's func_00419610 does X = *(TOC[-0x788C] - 0x7E70),
       func_0033BBB8(out, X[+4], X[+0x30]) -> map id bytes (area, block, ..) at out; the port makes that
-      call itself. "pos <area>,<block> x y z" (Palace 2,3; Latria 4,0). The ppu_fs.cpp .mcp tracker is gone.
+      call itself. "pos \<area>,\<block> x y z" (Palace 2,3; Latria 4,0). The ppu_fs.cpp .mcp tracker is gone.
 58. **Sound behind the picture, thread CPU in the recording, renderer -10% (2026-11-01, user's 01:14 recording):**
     - User: "a little stuttery again" + sound "out of sync" (sounds land late). Recording (12 min): judder =
       the first \~20 s on the Latria walkway by the save point (-6.5, 9.3, -14.6; \~1050 draws vs 500-650
@@ -1042,7 +1042,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       / min. Sandbox Latria walking + pans: default 29-31 ms (min 24), target 20: 18-20 (13), 12: 13-15
       (7), 15: 15.3 (min 10) -- 0 underruns in all. \~15-30 ms less audio delay.
     - Thread CPU in the perf log (rsx_live_draw.c perf_thread_cpu, DES_PERF_THREADS=0 = off): once a
-      second "# <us> thr <process %> <name>=<%> ..." (QueryThreadCycleTime per host thread, by
+      second "# \<us> thr \<process %> \<name>=<%> ..." (QueryThreadCycleTime per host thread, by
       ps3_thread_name), perf_report prints the whole-log means and per F8 mark the threads that rose.
       Latria standing (thread_cpu.py, per thread): one "spu job" thread 102% (spins), HighGraphics 58%
       (much of it sub-ms usleep spins at 0x00ACB0A0 waiting for the dispatcher: 17k calls / 10 s,
@@ -1108,7 +1108,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Key = splitmix(content hash the cache already computes, mixed with base format, w, h, remap):
       content-addressed, same every run / PC. LD_TEX_DUMP=1 writes level 0 AS SAMPLED (remap applied;
       BC decoded on the CPU, remap via the same s[]={A,R,G,B} rule as write_texture_srv's BC mapping)
-      to textures\dump\<KEY>_<w>x<h>_<fmt>.png + index.csv, once per key (and never over an
+      to textures\dump\<KEY>_\<w>x\<h>_\<fmt>.png + index.csv, once per key (and never over an
       existing file), in the worker; 256 MB queue cap holds the renderer. Changing textures: first 3
       contents per cache entry, re-armed (max 8x) after \~15 s unchanged.
     - textures\replace\**\<KEY>*.png|.dds: scanned once at start; loaded in the background on first
@@ -1147,7 +1147,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - export: glTF + .bin + textures\*.png (diffuse / normal from the model's own TPF, a .tpf beside it,
       or the area's MAP\mXX\*.tpf), skeleton as joint nodes WITHOUT bone scale (Blender's rest pose
       cannot hold it; vertices still placed with the real scaled matrices), IBM = inverse joint world,
-      every vertex skinned (rigid ones weight 1 to their bone), meshes named m00_<material>, unique
+      every vertex skinned (rigid ones weight 1 to their bone), meshes named m00_\<material>, unique
       material names (#index) + extras.flver_material.
     - import: model-space positions = sum w * (joint world * IBM) * p from the glTF itself (so Blender's
       bone re-orientation does not matter), mirrored back; rigid meshes back into their bone's space;
@@ -1202,9 +1202,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       both fixed by the narrowed design above.
     - cellGcmSys.c gcm_flip_request: a direct flip now signals the kick event; Present came \~3.9 ms
       after every flip (the ticker's idle wait). LD_FLIP_KICK=0 = old.
-    - Perf log: "psof <n> <ms> <disk ms>" (all pipeline builds on the drain thread in a frame, also
-      those under 1 ms), "psow" (a critical draw waited), "psoa" (worker-built, no stall), "texc <n>
-      <ms>" (texture creation in a frame); perf_report counts psof/psow as shader compile and texc as
+    - Perf log: "psof \<n> \<ms> \<disk ms>" (all pipeline builds on the drain thread in a frame, also
+      those under 1 ms), "psow" (a critical draw waited), "psoa" (worker-built, no stall), "texc \<n>
+      \<ms>" (texture creation in a frame); perf_report counts psof/psow as shader compile and texc as
       "texture creation".
     - Results, pinned A/B (AFF=FFFF), both runs from the same pre-test shader-cache snapshot, a
       Latria 4-2 save, walk from the archstone + teleport to marks 3/4: worst frame
@@ -1275,9 +1275,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       the limit. Late-step stacks (the recorder has them now): main in sys_cond_wait under
       func_001D1A80, HighGraphics in sys_cond_wait (60/68), renderer idle.
     - Fix (boot_main.cpp pin_to_biggest_l3): at start, with two or more L3 caches and the biggest serving
-      >= 12 logical CPUs, the process is pinned to it (the 96 MB V-Cache CCD on a 7950X3D). The
+      \>= 12 logical CPUs, the process is pinned to it (the 96 MB V-Cache CCD on a 7950X3D). The
       HighGraphics <-> SPU dispatcher lock-line hand-offs no longer cross dies. 77 -> 89.8 fps at the
-      spot (same as AFF=FFFF by hand). DES_AFFINITY=0 = off, =<hex> = mask. Single-L3 CPUs untouched.
+      spot (same as AFF=FFFF by hand). DES_AFFINITY=0 = off, =\<hex> = mask. Single-L3 CPUs untouched.
 66. **Lifted PPU code built with SSE4.1 / AVX2 / FMA, no stack cookies, fp-contract off (2026-11-02):**
     - port/project/CMakeLists.txt (copy in patches/port-project-CMakeLists.txt): clang-cl lifted PPU
       units get "-msse4.1;-mavx2;-mfma;/GS-;/clang:-ffp-contract=off" (DS_PPU_SIMD), like the SPU
@@ -1292,7 +1292,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       after every guest call (DRAIN_TRAMPOLINE), ctx __restrict; or an automatic 100<->50 switch
       (vblank 200<->100 Hz + present interval 1<->2 at a fixed clock 167; clock scale must not change
       mid-run: absolute multiply in sys_timer.c / ppu_sysprx.cpp). Repro: a save in the Nexus,
-      DES_WARP_AT=125:5,1,997 (lands at a boss arena; DES_GOD=1) + DES_TELEPORT_AT=150:<mark>.
+      DES_WARP_AT=125:5,1,997 (lands at a boss arena; DES_GOD=1) + DES_TELEPORT_AT=150:\<mark>.
 67. **Cheaper PPU stores to SPU-reserved lines: a held-line table (2026-11-02, Valley 100 fps):**
     - Profile (DES_PERF_STACK_EVERY=2, HighGraphics at the Valley spot, 100 fps): 16.9% of its samples
       in the store path for lines an SPU kernel has reserved -- vm_write32 -> lock-line lock ->
@@ -1369,7 +1369,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       TXB fallback, D16 / guest-memory D24, LD_FORCE_GREEN -- all handled above except the stretch.
     - Result: tutorial corridor (frame dumps, LD_SHADOW_COMPARE=0 vs default): the bright glow on the wall around the player becomes a proper darker shadow, floor shadow ahead of the player appears; 171 programs compile with _rsx_shadow7 (LESS). Final build: no [shadow] fallbacks or pso-fail in the tutorial or a Latria run (99.85% frames even, frames normal).
     - Repro: a save in the Nexus, DES_WARP_AT=130:8,1,10 (tutorial corridor), DES_GOD=1;
-      LD_F12_CAPTURE + LD_CAPTURE_AT=<frame> for per-draw captures, LD_HLSL_DUMP for the programs.
+      LD_F12_CAPTURE + LD_CAPTURE_AT=\<frame> for per-draw captures, LD_HLSL_DUMP for the programs.
 71. **Movies play: real cellSail + PAMF playback (2026-11-02, GitHub issues #4 black title screen and #11):**
     - Before: cellSail was a stub and every launcher sets PS3_NO_SAIL=1, so the player failed to create and
       the game skipped all six movies: ds_title (the logo drawing itself out of smoke on the title screen),
@@ -1411,8 +1411,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       INVALID_STATE = 0x80610702.
     - Kept: anything that is not a playable PAMF (other containers, no allocator) takes the old
       instant-open/instant-end path that Midway Arcade Origins and Tokyo Jungle rely on.
-    - Switches: PS3_NO_SAIL=1 (skip all movies, the old behaviour), PS3_SAIL_SKIP=<name,...>,
-      PS3_SAIL_DECODER=none, PS3_SAIL_FORCE=<host .pam> (tests), PS3_SAIL_PCM=s16, PS3_SAIL_AV_MS=<n>,
+    - Switches: PS3_NO_SAIL=1 (skip all movies, the old behaviour), PS3_SAIL_SKIP=\<name,...>,
+      PS3_SAIL_DECODER=none, PS3_SAIL_FORCE=\<host .pam> (tests), PS3_SAIL_PCM=s16, PS3_SAIL_AV_MS=\<n>,
       PS3_SAIL_LOG=1 (events, Open/CloseStream call chains, a line a second: frames shown/dropped, PCM
       buffered, sound pulls).
     - Result (sandbox, frame dumps + AUDIO_WAV): boot logos -> ds_advertise plays (picture right, captured
@@ -1455,7 +1455,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Fix (PORT PATCH in ppu_recomp_015.cpp, des_skip_limit): both limits are scaled by ps3_clock_scale(), so
       the skip fires at the original 36 ms of real time in every mode (30 fps unchanged: clock 100).
       DES_FRAME_SKIP=0 never skips, =1 the lifted limits; "[des] frame skip: ..." says which.
-    - DES_STALL_MS=<n> (default 100, 0 = off; adaptive step in ppu_recomp_011.cpp): step intervals longer than
+    - DES_STALL_MS=\<n> (default 100, 0 = off; adaptive step in ppu_recomp_011.cpp): step intervals longer than
       that (shader compile, OS hiccup) stay out of the 24-step average, which now keeps intervals, not stamps.
       Before, a 770 ms stall in a recorded tutorial run was paid back at 3.1x speed for 0.3 s (step stuck at
       1/30); now the game freezes and resumes, as on PS3.
@@ -1547,7 +1547,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       for 3 presents waits for the GPU and ResizeBuffers; a surface of another size than the back buffer is drawn
       letterboxed at its own aspect (black bars): box filter (ld_downsample_to) when the host size is an exact
       multiple, bilinear (ld_present_bilinear) otherwise; same size = the old CopyResource. LD_SWAP_RESIZE=0 =
-      old. Checked with back-buffer dumps (TEST LD_TEST_CLIENT=<w>x<h>, LD_BB_DUMP=<ppm> + LD_BB_DUMP_AT=<frame>):
+      old. Checked with back-buffer dumps (TEST LD_TEST_CLIENT=\<w>x\<h>, LD_BB_DUMP=\<ppm> + LD_BB_DUMP_AT=\<frame>):
       2x in 1720x720 = 1280x720 box + bars, 2x / 1x in 1920x1080 = bilinear, full window.
     - Agent reviews: map (5 readers + critic) before; after, 3 lenses + verify: 7 real
       (zeta size merged across scales -> 4096^2 + rebuilds; UNNORM shadow compare used host GetDimensions; WPOS
@@ -1708,7 +1708,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       already had focus), F1 toggles, leaving the window or using the pad releases; captured = hidden cursor
       (WM_SETCURSOR) and ClipCursor to the client area. Cursor-delta fallback without WM_INPUT (no jump on the
       capturing poll). PAD_MOUSE_LOOK=0 = stick only; PAD_MOUSE=0 = no mouse.
-    - Sandbox (PAD_TEST_MOUSE="<s>:<dx>,<dy>:<dur>;..." TEST counts per poll; DES_MLOOK_LOG=1 angles per 15 mouse
+    - Sandbox (PAD_TEST_MOUSE="\<s>:\<dx>,\<dy>:\<dur>;..." TEST counts per poll; DES_MLOOK_LOG=1 angles per 15 mouse
       frames, =2 every free-camera frame): 3 counts/frame -> 0.054 rad per 15 frames exactly; dy -30 for 1 s ->
       pitch stops at 1.2217; directions = the stick's (this save has both invert options set).
     - Agent review (2 areas + verify): 8 real, all fixed (capturing click leaked one R1 frame; stick span 0.63 vs
@@ -1736,12 +1736,12 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - But every "thr" line read 0 and there was no render / step CPU: Wine's QueryThreadCycleTime /
       QueryProcessCycleTime are stubs (0). rsx_live_draw.c now falls back to GetThreadTimes / GetProcessTimes
       when the process cycle counter reads 0 (100 ns units at scheduler-tick resolution: right for the 1 s
-      lines, coarse per frame); "info cpu_clock cycles|thread_times" says which, "info host windows|wine <ver>"
+      lines, coarse per frame); "info cpu_clock cycles|thread_times" says which, "info host windows|wine \<ver>"
       the host. LD_PERF_CPU_TIMES=1 (TEST) forces the fallback on Windows: the same sandbox spot read
       spu_job 103 / synth2 52 / HighGraphics 50 by cycles and 101-108 / 53-55 / 49-51 by thread times.
     - Wine's waitable timers go through wineserver and may be \~1 ms coarse, which would stretch every
       0.2-1 ms usleep. Now measured: sys_timer.c counts the sleeps taken (timer / Sleep path), microseconds asked
-      and microseconds past the deadline; once a second "slp <sleeps> <us asked> <us late> <1 ms+ late>" in the
+      and microseconds past the deadline; once a second "slp \<sleeps> \<us asked> \<us late> <1 ms+ late>" in the
       perf log, summarised by tools/perf_report.py. Windows baseline (5950X sandbox, 50 fps): \~1000 sleeps/s,
       7.0 ms asked on average, 0.26-0.28 ms late on average, 0.5% 1 ms or more late. Next: the same tutorial
       route recorded on the Ubuntu box, then act on what it shows.
@@ -1787,7 +1787,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       over the folder and the game was never rebuilt: the OLD exe (before fix 71, cellSail a stub) ran with the
       NEW PLAY.bat, which turns movies on -- the stub never sends the events the game waits for, which fix 71
       recorded as a black screen forever.
-    - PLAY.bat now checks for that. A successful full build (setup/build.py finish, not "BUILD.bat <target>")
+    - PLAY.bat now checks for that. A successful full build (setup/build.py finish, not "BUILD.bat \<target>")
       leaves copies of the patches it was made from in port/build_opt/built/; PLAY.bat's :stale compares them with
       patches/. Different or missing (a build from before this, or a rebuild that failed or was stopped) = not
       rebuilt: run directly it runs BUILD.bat first (no question; an up-to-date folder starts at once); from the
@@ -1827,7 +1827,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       (ppu_recomp_011.cpp), so a report shows the setting.
     - Releases: GitHub Releases (first v2026.11.03). .github/workflows/release.yml, on a published release or by
       hand for a tag: builds DemonsSoulsLauncher.exe on windows-2022 with the static C runtime (dumpbin: only
-      system DLLs, or the job fails) and attaches DemonsSoulsRecomp-<tag>.zip (git archive of the tag + the
+      system DLLs, or the job fails) and attaches DemonsSoulsRecomp-\<tag>.zip (git archive of the tag + the
       launcher at its top level; game-file extensions refused). The same build here imports COMCTL32 / gdiplus / SHELL32 /
       USER32 / GDI32 / KERNEL32 only and holds no paths from the building PC.
 82. **Nothing to install: SETUP downloads a portable Python, Git, compiler and RPCS3 (2026-11-03, GitHub report
@@ -1836,9 +1836,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - The game exe itself cannot be shipped (it is recompiled game code), so everything else comes without an
       installer or administrator rights, into deps\, and only when the PC lacks it:
       * Python: python.org's NuGet build 3.13.17 (15 MB, pinned sha256) into deps\python when no py -3 / python
-        >= 3.10. Git: Git for Windows' MinGit 2.56.0.4 (40 MB, pinned) into deps\mingit, first on PATH for
+        \>= 3.10. Git: Git for Windows' MinGit 2.56.0.4 (40 MB, pinned) into deps\mingit, first on PATH for
         SETUP.bat and BUILD.bat. Both through setup/fetch.ps1 (.NET download, Get-FileHash, ZipFile into
-        <dest>.part, renamed when complete), which SETUP.bat runs as a script block from environment variables:
+        \<dest>.part, renamed when complete), which SETUP.bat runs as a script block from environment variables:
         powershell -File treats the script's path as a wildcard pattern.
       * Compiler: no Visual Studio C++ tools (or no LLVM >= 17) -> offer_portable [Y/n] -> deps/.portable_compiler
         -> the xwin route (Linux's): LLVM 23.1.4's Windows .tar.zst (277 MB, pinned sha256) streamed through
@@ -1875,7 +1875,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Updates for a copy that is not a git clone: setup/update.py --check asks GitHub's releases/latest (latest=,
       current= from VERSION, note= lines from "New in this release", stdout forced to UTF-8 for the launcher's pipe);
       --install downloads the release ZIP, checks it against the sha256 digest GitHub publishes for the asset, copies
-      the files under DemonsSoulsRecomp-<tag>/ over the folder through <file>.new + os.replace (waits for the closing
+      the files under DemonsSoulsRecomp-\<tag>/ over the folder through \<file>.new + os.replace (waits for the closing
       launcher's exe, last resort renames it aside), never anything in KEEP (game, port, deps, .venv, saves, logs,
       launcher.ini, ...; any letter case), and writes VERSION last. The release job writes VERSION into the ZIP.
     - Launcher: Check for updates on a copy without .git runs update.py --check on a thread (git_run), shows the
@@ -2007,7 +2007,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       - The same mask gates the game's own action buttons, so a click can never confirm and attack at once.
         Outside menus nothing changed. PAD_MENU_MOUSE=0 = off; DES_MENU_LOG=1 = the mask with times.
     - rsx_null_backend.c WM_INPUT: RI_MOUSE_WHEEL -> ps3_host_mouse_wheel (also from absolute pointers).
-    - Test (PAD_TEST_WHEEL="<sec>:<notches>" new, LMB / RMB through PAD_KEY_SCRIPT, frame dumps): Start menu (0x40);
+    - Test (PAD_TEST_WHEEL="\<sec>:\<notches>" new, LMB / RMB through PAD_KEY_SCRIPT, frame dumps): Start menu (0x40);
       LMB opened the inventory (0x240); 3 notches down moved the list cursor Crescent Moon Grass -> Full Moon Grass,
       2 up -> Half Moon Grass; RMB back to the tab bar, RMB again closed the menu (0); LMB in the game then cast the
       right-hand spell (R1) as before. 8 queued notches + RMB 0.3 s later: back out, no stray moves.
@@ -2069,7 +2069,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       before this lacks it; a failure only leaves the PS3 icons). Each atlas is checked against the English
       BLUS-30443 one first (sha1 of the decoded texture); another disc's is left alone. textures\kbm is ignored by
       git: it is made from the game.
-    - rsx_tex_pack.c: <dir>\kbm (LD_TEX_DIR, default textures) is scanned like replace\ into the same table under
+    - rsx_tex_pack.c: \<dir>\kbm (LD_TEX_DIR, default textures) is scanned like replace\ into the same table under
       KEY ^ a salt; texpack_kbm_find(key), texpack_kbm_want() (LD_TEX_KBM=0 never, 1 always, else
       ps3_host_kbm_active()). LD_TEX_KBM_DIR = another folder.
     - rsx_live_draw.c: a texture cache entry remembers its kbm slot (kbm_idx) and which set it was made for
@@ -2078,7 +2078,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       content (no dump) and swaps it in; a kbm file still loading shows the PS3 art until tp_poll swaps it in.
     - cellPad.c: ps3_host_kbm_active() = no pad on port 0, or a key / mouse button / captured mouse used after the
       pad (the same "keyboard used last" that already decides mouse capture); kept while the window is in the
-      background; 0 with PAD_NO_KEYBOARD. PAD_TEST_FAKE_PAD="<sec>:<hex mask>:<dur>,..." (TEST) also holds buttons
+      background; 0 with PAD_NO_KEYBOARD. PAD_TEST_FAKE_PAD="\<sec>:\<hex mask>:\<dur>,..." (TEST) also holds buttons
       on the fake pad.
     - Test (2x internal resolution, a save in the Nexus, fake pad + scripted keys): pad -> L / R / square on the
       HUD; C pressed -> both mice and R at once; L3 on the pad -> PS3 again; Start menu opened with Enter -> "arrows
@@ -2151,7 +2151,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
 94. **Black screen under Wine / Proton without Microsoft's shader compiler: the depth snapshot shaders no longer
     call RWTexture2D.GetDimensions (2026-11-05, found on Ubuntu 24.04 with Wine 9.0 and WineHQ 11.0):**
     - Log: `[zetatrack] depth snapshot shader compile failed ... E5002: Type 'RWTexture2D<float>' does not have
-      methods` (Wine 9.0; Wine 11.0: `E5005: Method 'GetDimensions' is not defined on type 'RWTexture2D<float>'`),
+      methods` (Wine 9.0; Wine 11.0: `E5005: Method 'GetDimensions' is not defined on type 'RWTexture2D\<float>'`),
       then `[rsx] live-draw init FAILED -- falling back to the D3D12 backend`: the fallback backend draws a black
       window (title bar `draws: 19`). Wine's d3dcompiler is vkd3d-shader's HLSL compiler, which has no methods on
       RWTexture2D; with Microsoft's d3dcompiler_47 in the prefix (`play.sh --ms-d3dcompiler`) it compiled.
@@ -2161,12 +2161,12 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       fix 93 one).
 95. **Dash in slow motion above 150 fps: the game's "pressing into a wall" check assumed 1/30 s steps (2026-11-05,
     GitHub issues #23 "with unlimited frames the player runs slower than he walks" and #22, only walking at 165 fps):**
-    - Measured with a new PORT DEBUG knob, DES_FIXED_STEP=<s>[@<sec>] (every game step is <s> seconds from <sec>
+    - Measured with a new PORT DEBUG knob, DES_FIXED_STEP=\<s>[@\<sec>] (every game step is \<s> seconds from \<sec>
       seconds on, at any real frame rate, so short steps can be tested on any PC), and per-step positions
       (DES_WHERE=0.000001). Plain running is 3.67 m per game second at every step from 1/60 to 1/480 s, whatever
       the real frame rate or PS3_CLOCK_SCALE. The DASH (circle held) is 6.3 up to a 1/150 s step, then 2.96-3.16
       at 1/160, 1/200 and 1/240: a cliff, with every step exactly half as long. Stamina is not involved.
-    - Found by diffing the character object between full-speed and slow dashes (DES_CHR_DUMP=<sec>:<file>, PORT
+    - Found by diffing the character object between full-speed and slow dashes (DES_CHR_DUMP=\<sec>:\<file>, PORT
       DEBUG: the player character's 0x1000 bytes and 0x800 bytes behind every pointer in it): ChrCtrl+0x128, a
       speed factor, is 1.0 vs 0.5, next to the target speed at +0x12C (6.33 dash, 3.67 run). PPU_WWATCH on it (the
       character's address changes between runs; rerun until the dump matches) gives the writer, func_002EC2B8
@@ -2183,7 +2183,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       nothing measurable (6.15 vs 6.18 m). Dashing into the statue wall still slows down: 1.0 -> 0.5 in \~0.13 game
       seconds at both 1/60 (8 steps) and 1/240 (32 steps).
     - Also checked, because the check runs for every character: the Storm King's mantas (entity ids 400-411 in the
-      map's MSB, the Storm King 822; DES_TRACK=<id>,... PORT DEBUG prints their positions with DES_WHERE) fly at
+      map's MSB, the Storm King 822; DES_TRACK=\<id>,... PORT DEBUG prints their positions with DES_WHERE) fly at
       9.02 m per game second at 1/60 and at 1/240, with the fix on and off, and their spikes fly and spawn per game
       second the same way. Not done here: the sound drifting above 60 fps (#16).
 96. **Skip the intro: straight to PRESS START (2026-11-05, asked for: "a boot option that skips straight to the
@@ -2292,13 +2292,13 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     "can it say PRESS ENTER KEY instead of PRESS ENTER BUTTON or press q key"; the user tried it: "hell yeah that
     worked"):**
     - cellPad.c: the souls layout's keys are a table, s_kb (24 actions: 4 move, 4 camera, the 16 buttons; up to two
-      keys each; the defaults are the old layout). PAD_KEYS="<action>=<KEY>[+<KEY>];..." replaces an action's keys,
-      "<action>=" unbinds it. Key names = pad_vk_from_name, which now also knows RSHIFT RCTRL ALT RALT CAPS INS DEL
+      keys each; the defaults are the old layout). PAD_KEYS="\<action>=\<KEY>[+\<KEY>];..." replaces an action's keys,
+      "\<action>=" unbinds it. Key names = pad_vk_from_name, which now also knows RSHIFT RCTRL ALT RALT CAPS INS DEL
       HOME END PGUP PGDN MB4 MB5 F2-F7 F10 NUM0-9 and the punctuation keys. Letters stay by position (fix 69). The
       menu mouse (fix 89 / 93) reads the mouse buttons themselves (it read "the R1 / L1 bits from LMB / RMB"), and
       clears whatever they are bound to; the capturing click clears the left button's binding.
     - The title's keyboard text (fix 92): ps3_host_start_key_text gives the start action's first key as printed on
-      the keyboard (by position), and the hook writes "PRESS <key> KEY" ("PRESS ENTER KEY", "PRESS Q KEY"; a mouse
+      the keyboard (by position), and the hook writes "PRESS \<key> KEY" ("PRESS ENTER KEY", "PRESS Q KEY"; a mouse
       button or a name too long for the 18 units without " KEY": "PRESS LEFT CLICK", "PRESS BACKSPACE") over the 19
       units of "PRESS START BUTTON" (a shorter text ends earlier; the font centres it), and the original back for
       the pad -- only while the units read the original or the last text written.
@@ -2342,7 +2342,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       -- so the patch failed on an LF checkout (core.autocrlf=false: Linux, Steam Deck, macOS; "patch failed:
       libs/video/rsx_live_draw.c:7559"); autocrlf=true and =input both normalise, which is why the checks missed
       it. The CR is back on that one line. Check a regenerated section with all three settings in an LF worktree
-      (git -c core.autocrlf=false worktree add --detach <dir> HEAD in deps/ps3recomp, then git -c core.autocrlf=
+      (git -c core.autocrlf=false worktree add --detach \<dir> HEAD in deps/ps3recomp, then git -c core.autocrlf=
       false|true|input apply --check).
 105. **Even frame pacing on 144 / 165 / 75 Hz screens; G-Sync / FreeSync (2026-11-07; a YouTube review of the port
     named frame timing and pacing as its biggest issue; the user picked 72 fps for 144 Hz):**
@@ -2739,8 +2739,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
 129. **Slow GPU submits and fence waits in the perf log; what the last 1-1 stalls are not (2026-11-09, 5800X):**
     - After fix 128, warm 1-1 runs still had 0-4 whole-frame stalls (60-190 ms) on the walk, with no perf-log line
       from any thread during the gap and the render thread leaving rsx_live_draw_present -> ld_kick_now.
-    - Diagnostic (libs/video/rsx_live_draw.c, always on, a QPC read per submit): "ecl k|f <ms> vram <use>/<budget>
-      sys <use>/<budget>" for an ExecuteCommandLists of 10 ms or more (kick / flush) and "fwait p|f <ms> ..." for a
+    - Diagnostic (libs/video/rsx_live_draw.c, always on, a QPC read per submit): "ecl k|f \<ms> vram \<use>/\<budget>
+      sys \<use>/\<budget>" for an ExecuteCommandLists of 10 ms or more (kick / flush) and "fwait p|f \<ms> ..." for a
       fence wait of 30 ms or more, with the adapter's memory use and budget in MB (IDXGIAdapter3, now fetched in
       every build). WDDM makes a list's resources resident inside ExecuteCommandLists, so a long one near budget is
       paging. The notes also land in players' F8 recordings (REPORT.bat).
@@ -2782,7 +2782,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - An update hits the same thing: the new patch fails, patch_sync falls back to a relift, step 5 fails. That failure
       leaves no port/.lifted, so the next BUILD sees "not set up", skips the patch and compiles the unpatched game
       without a word. That trap is not fixed here; without this bug nothing reaches it.
-    - Fix: every CR out of patches/lifted-code.patch (781 bytes, one of them a stray "+<CR><CR>" line). The lifted code
+    - Fix: every CR out of patches/lifted-code.patch (781 bytes, one of them a stray "+\<CR>\<CR>" line). The lifted code
       is always LF when the patch goes on, so this file should have none; check for that when regenerating a section.
     - Checked: a copy of the lifted code put back to the fresh-lift state and made LF as step 5 does. The old patch fails
       on the nine files and the new one applies, each under core.autocrlf=false, true and input.
@@ -2804,7 +2804,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
   next run trusts -- this caused much of the run-to-run variation. Wipe hdd1/cache before every run
   (run_capture.ps1 does). `logs/ref_order.txt` = RPCS3's 148 distinct disc files in boot order; compare a run's
   last `/dev_bdvd` open against it.
-- Debug switches added this round: SPU_ATOM_EAS=<ea,...> (per-task lock-line trace), SPURS_TASK_WATCH_ELF=<hex>,
+- Debug switches added this round: SPU_ATOM_EAS=\<ea,...> (per-task lock-line trace), SPURS_TASK_WATCH_ELF=\<hex>,
   LFQ_DBG also dumps the polled queue line.
 
 ### Where it stands (2026-10-27)
@@ -2831,11 +2831,11 @@ only read port\recompiled; the playable build is untouched.
   vtable 0x01852800, checked by hand; all 747 named game vtables sit within 0x20000 of their
   initialiser). Methods inherited by more than 3 vtables are Shared_vfNN.
 - Later the same day: 57,041 named. Runtime-class rule refined -- the class static is the .bss global
-  with 2-12 users in the 40 lines before the name; DLRuntimeClassImpl<T> vtables always have 13 slots
+  with 2-12 users in the 40 lines before the name; DLRuntimeClassImpl\<T> vtables always have 13 slots
   (others a user stores are the class's own, the largest one a constructor stores); manager classes
   have GetRuntimeClass in slot 2; a name must exist as UTF-16 too and be CamelCase; a vtable more than
   0x40000 from its initialiser is rejected. 840 game classes (PlayerIns, ChrIns, EnemyIns, ChrCtrl...),
-  RuntimeClass_<T>_Init/_Get, Name_SubXXXXXXXX for tied classes without their own runtime class,
+  RuntimeClass_\<T>_Init/_Get, Name_SubXXXXXXXX for tied classes without their own runtime class,
   thunks (11k) and single-caller helpers.
 - Compilation units recovered (tools\units.py): every SNC unit has its own constant pool, so a
   function's most-read pool base names its unit; 2,052 of 2,110 pools are one contiguous run.
