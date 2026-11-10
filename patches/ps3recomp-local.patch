@@ -23969,18 +23969,193 @@ index 14c6425..e557b7d 100644
                                 uint64_t source, uint64_t data1,
                                 uint64_t data2,  uint64_t data3);
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
-index 41d5721..0367e03 100644
+index 41d5721..87c03ae 100644
 --- a/runtime/syscalls/sys_ppu_thread.c
 +++ b/runtime/syscalls/sys_ppu_thread.c
-@@ -180,6 +180,7 @@ static void* ppu_host_thread_proc(void* param)
+@@ -169,6 +169,173 @@ static void wait_first_block(const ppu_thread_info* t, uint64_t tid)
+             (unsigned long long)tid, t->name, t->priority, PRIO_START_TIMEOUT_MS);
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * Hot cores (Demon's Souls NOTES fix 132; DES_HOTCORES=0 = off)
++ *
++ * The frame is a hand-off chain: the HighGraphics PPU thread fills a command queue and one SPU
++ * task (the SPURS command dispatcher, a pooled host thread) drains it. Uncapped, the dispatcher is
++ * busy all the time and HighGraphics waits on it. Left to the scheduler the two sometimes share a
++ * physical core (SMT siblings: Latria 4-2 48 instead of 73 fps) or have a sibling busy with other
++ * game threads. Each gets a whole physical core of its own here, and every other thread of the
++ * process is kept off those two: Latria uncapped 72.9 -> 77.4 fps on a Ryzen 7 5800X.
++ *
++ * Windows CPU sets: the process default set (every thread that has no set of its own, the driver's
++ * threads included) is all usable CPUs but the claimed hot cores; a hot thread selects its core. A
++ * core leaves the default set only once its slot is claimed, so a slot nobody claims (the dispatcher
++ * with DES_DISPQ_NATIVE=0) costs nothing. Reserved: two cores of the fastest efficiency class (Intel
++ * P-cores), the best by Windows' scheduling class (preferred cores) and then the highest-numbered,
++ * within the process affinity mask (fix 65's L3 pin). Only with at least 6 usable physical cores of
++ * that class, so four remain for the rest; smaller CPUs, hybrid CPUs with fewer P-cores, and
++ * machines with several processor groups keep the scheduler's placement. Parked cores count: parking
++ * changes at run time, and the scheduler deals with it.
++ * ps3_hot_thread(slot) is called by the thread itself (0 = HighGraphics, 1 = dispatcher, at the
++ * entry of its native chain, fix 112); a slot that moves to another thread takes its core along.
++ * The repeat call is two thread-local loads and one global load.
++ * -----------------------------------------------------------------------*/
++#define HOT_SLOTS 2
++void ps3_hot_thread(int slot);
++static volatile LONG s_hot_gen[HOT_SLOTS];     /* bumped when a slot changes thread */
++static PPU_TLS int   t_hot_slot = -1;
++static PPU_TLS LONG  t_hot_gen;
++#ifdef _WIN32
++enum { HOT_MAXC = 64 };
++static SRWLOCK s_hot_lock = SRWLOCK_INIT;
++static int     s_hot_state;                    /* 0 untried, 1 on, -1 off */
++static ULONG   s_hot_all[HOT_MAXC];            /* every usable CPU set id ... */
++static BYTE    s_hot_core[HOT_MAXC];           /* ... and its physical core */
++static int     s_hot_n;
++static int     s_hot_pick[HOT_SLOTS];          /* each slot's core */
++static int     s_hot_claimed[HOT_SLOTS];
++static HANDLE  s_hot_owner[HOT_SLOTS];
++
++static int hot_init(void)
++{
++    const char* e = getenv("DES_HOTCORES");
++    if (e && e[0] == '0') return 0;
++    if (GetActiveProcessorGroupCount() > 1) {
++        fprintf(stderr, "[hotcores] several processor groups: left to the scheduler\n");
++        return 0;
++    }
++    DWORD_PTR pm = 0, sm = 0;
++    if (!GetProcessAffinityMask(GetCurrentProcess(), &pm, &sm)) return 0;
++    ULONG len = 0;
++    GetSystemCpuSetInformation(NULL, 0, &len, GetCurrentProcess(), 0);
++    if (!len) return 0;
++    char* buf = (char*)malloc(len);
++    if (!buf) return 0;
++    if (!GetSystemCpuSetInformation((PSYSTEM_CPU_SET_INFORMATION)(void*)buf, len, &len, GetCurrentProcess(), 0)) {
++        free(buf); return 0; }
++    BYTE eff[HOT_MAXC], sched[HOT_MAXC]; int n = 0;
++    for (ULONG at = 0; at < len && n < HOT_MAXC; ) {
++        const SYSTEM_CPU_SET_INFORMATION* c = (const SYSTEM_CPU_SET_INFORMATION*)(const void*)(buf + at);
++        if (!c->Size) break;
++        if (c->Type == CpuSetInformation && c->CpuSet.Group == 0 && c->CpuSet.LogicalProcessorIndex < 64 &&
++            (pm >> c->CpuSet.LogicalProcessorIndex & 1) &&
++            (!c->CpuSet.Allocated || c->CpuSet.AllocatedToTargetProcess)) {
++            s_hot_all[n] = c->CpuSet.Id; s_hot_core[n] = c->CpuSet.CoreIndex;
++            eff[n] = c->CpuSet.EfficiencyClass; sched[n] = c->CpuSet.SchedulingClass; n++;
++        }
++        at += c->Size;
++    }
++    free(buf);
++    s_hot_n = n;
++    /* the fastest efficiency class; its physical cores, ranked by scheduling class (best over the core's
++     * logical CPUs), then by number */
++    int maxeff = 0, nall = 0, nfast = 0;
++    int fcore[HOT_MAXC], frank[HOT_MAXC];
++    uint64_t seen[4] = {0};
++    for (int i = 0; i < n; i++) if (eff[i] > maxeff) maxeff = eff[i];
++    for (int i = 0; i < n; i++) {
++        if (!(seen[s_hot_core[i] >> 6] >> (s_hot_core[i] & 63) & 1)) {
++            seen[s_hot_core[i] >> 6] |= 1ull << (s_hot_core[i] & 63); nall++; }
++        if (eff[i] != maxeff) continue;
++        int k = 0;
++        while (k < nfast && fcore[k] != s_hot_core[i]) k++;
++        if (k == nfast) { fcore[nfast] = s_hot_core[i]; frank[nfast] = sched[i]; nfast++; }
++        else if (sched[i] > frank[k]) frank[k] = sched[i];
++    }
++    if (nfast < 6) {
++        fprintf(stderr, "[hotcores] %d usable physical cores, %d of the fastest class: left to the scheduler\n",
++                nall, nfast);
++        return 0;
++    }
++    for (int s = 0; s < HOT_SLOTS; s++) {
++        int b = -1;
++        for (int k = 0; k < nfast; k++) {
++            if (s && fcore[k] == s_hot_pick[0]) continue;
++            if (b < 0 || frank[k] > frank[b] || (frank[k] == frank[b] && fcore[k] > fcore[b])) b = k;
++        }
++        s_hot_pick[s] = fcore[b];
++    }
++    fprintf(stderr, "[hotcores] %d physical cores (%d of the fastest class): HighGraphics -> core %d, SPU dispatcher "
++                    "-> core %d, other threads off them once claimed (DES_HOTCORES=0 = off)\n",
++            nall, nfast, s_hot_pick[0], s_hot_pick[1]);
++    return 1;
++}
++
++/* the process default set: every usable CPU but the claimed slots' cores */
++static int hot_set_default(void)
++{
++    ULONG rest[HOT_MAXC]; ULONG nrest = 0;
++    for (int i = 0; i < s_hot_n; i++) {
++        int mine = 0;
++        for (int s = 0; s < HOT_SLOTS; s++) if (s_hot_claimed[s] && s_hot_core[i] == s_hot_pick[s]) mine = 1;
++        if (!mine) rest[nrest++] = s_hot_all[i];
++    }
++    return SetProcessDefaultCpuSets(GetCurrentProcess(), rest, nrest) ? 1 : 0;
++}
++#endif
++
++void ps3_hot_thread(int slot)
++{
++    if (slot < 0 || slot >= HOT_SLOTS) return;
++    if (t_hot_slot == slot && t_hot_gen == __atomic_load_n(&s_hot_gen[slot], __ATOMIC_RELAXED)) return;
++#ifdef _WIN32
++    AcquireSRWLockExclusive(&s_hot_lock);
++    if (!s_hot_state) s_hot_state = hot_init() ? 1 : -1;
++    if (s_hot_state > 0) {
++        /* this thread gives up a slot it still holds (its generation is current): back to the default set */
++        if (t_hot_slot >= 0 && t_hot_slot != slot && s_hot_owner[t_hot_slot] &&
++            t_hot_gen == s_hot_gen[t_hot_slot]) {
++            SetThreadSelectedCpuSets(GetCurrentThread(), NULL, 0);
++            CloseHandle(s_hot_owner[t_hot_slot]); s_hot_owner[t_hot_slot] = NULL;
++            InterlockedIncrement(&s_hot_gen[t_hot_slot]);
++        }
++        /* the slot's previous thread goes back to the default set */
++        if (s_hot_owner[slot]) {
++            SetThreadSelectedCpuSets(s_hot_owner[slot], NULL, 0);
++            CloseHandle(s_hot_owner[slot]); s_hot_owner[slot] = NULL;
++        }
++        ULONG ids[8]; ULONG nids = 0;
++        for (int i = 0; i < s_hot_n && nids < 8; i++) if (s_hot_core[i] == s_hot_pick[slot]) ids[nids++] = s_hot_all[i];
++        HANDLE me = NULL;
++        if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &me,
++                            THREAD_SET_LIMITED_INFORMATION | THREAD_QUERY_LIMITED_INFORMATION, FALSE, 0) &&
++            SetThreadSelectedCpuSets(GetCurrentThread(), ids, nids)) {
++            s_hot_owner[slot] = me;
++            if (!s_hot_claimed[slot]) {
++                s_hot_claimed[slot] = 1;
++                if (!hot_set_default())
++                    fprintf(stderr, "[hotcores] SetProcessDefaultCpuSets failed (%lu)\n", GetLastError());
++            }
++            static int s_moves;
++            if (PS3_LOG_FIRST(s_moves, 8))
++                fprintf(stderr, "[hotcores] slot %d (%s) now on host thread %lu\n", slot,
++                        slot ? "dispatcher" : "HighGraphics", GetCurrentThreadId());
++        } else if (me) {
++            CloseHandle(me);
++        }
++        InterlockedIncrement(&s_hot_gen[slot]);
++    }
++    t_hot_slot = slot;
++    t_hot_gen  = __atomic_load_n(&s_hot_gen[slot], __ATOMIC_RELAXED);
++    ReleaseSRWLockExclusive(&s_hot_lock);
++#else
++    t_hot_slot = slot;
++    t_hot_gen  = __atomic_load_n(&s_hot_gen[slot], __ATOMIC_RELAXED);
++#endif
++}
++
+ /* ---------------------------------------------------------------------------
+  * Host thread entry point
+  * -----------------------------------------------------------------------*/
+@@ -180,6 +347,8 @@ static void* ppu_host_thread_proc(void* param)
  {
      ppu_thread_info* info = (ppu_thread_info*)param;
      ps3_thread_name("ppu %s", info->name);
 +    { extern void ps3_perf_watch_thread(const char*); ps3_perf_watch_thread(info->name); }   /* DES_PERF_STACK_THREADS */
++    if (!strcmp(info->name, "HighGraphics")) ps3_hot_thread(0);   /* fix 132: Demon's Souls' render thread */
  
  #ifdef _WIN32
      /* Reserve stack for the STACK_OVERFLOW handler, same as main() does for the
-@@ -269,6 +270,7 @@ static void* ppu_host_thread_proc(void* param)
+@@ -269,6 +438,7 @@ static void* ppu_host_thread_proc(void* param)
  
      /* Signal anyone waiting for join */
  #ifdef _WIN32

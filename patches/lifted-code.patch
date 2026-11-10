@@ -4271,7 +4271,7 @@ diff -ruN a/spu/spu_0001_at_0176C200/spu_recomp.c b/spu/spu_0001_at_0176C200/spu
          ctx->gpr[5] = spu_andi(ctx->gpr[5], 255);
          ctx->gpr[3] = spu_ila(0x13340);
          ctx->gpr[4] = spu_ila(0x13380);
-@@ -18487,3 +18559,370 @@
+@@ -18487,3 +18559,371 @@
      for (const spu_func_entry* e = spu_function_table; e->func; ++e)
          spu_register_function(e->addr, e->func);
  }
@@ -4281,6 +4281,7 @@ diff -ruN a/spu/spu_0001_at_0176C200/spu_recomp.c b/spu/spu_0001_at_0176C200/spu
 +{
 +    int32_t si_4818 = 0, si_4734 = 0;
 +    unsigned iter = 0, idle = 0;
++    { extern void ps3_hot_thread(int); ps3_hot_thread(1); }   /* PORT PATCH fix 132: the dispatcher's own core */
 +L_4808:
 +    if (!des_dispq_gate(ctx)) { if (entry) return 0; goto HANDOFF_4808; }
 +    if (iter && ++iter > DES_DISPQ_BURST) goto HANDOFF_4808;

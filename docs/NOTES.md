@@ -2774,6 +2774,43 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       aligned 71.3 / 71.9 / 72.3 -- most of the drop back.
     - Tour (7 stops): every stop 59.7-60 mean, no aborts or halts.
     - Tour (7 stops): every stop 59.9-60 mean, no aborts or halts.
+132. **Hot cores: the render thread and the SPU dispatcher get a physical core each (2026-11-10, 5800X):**
+    - Uncapped, the frame is paced by one hand-off. A thread sampler (destest/stallcatch.cs, scbusy.py) at Latria 4-2,
+      72.7 fps: the SPURS command dispatcher (an "spu job" pool thread) 99% busy with no waits; HighGraphics 98% with
+      30% of its samples in usleep waiting for it; ppu main 31%, the other SPU pool threads \~10% each. Building every
+      lifted PPU unit at -O2 (DS_PPU_O2_UNITS = all 128) did nothing: 73.0 vs 73.3 fps.
+    - In-run affinity lever (destest/pin.cs, segfps.py: the same session, layouts switched every 12-14 s): left to the
+      scheduler 73.4; the two on SMT siblings of one core 48.5; on two separate cores 75.8; each on a whole core with
+      every other thread kept off both 77.4.
+    - Fix (runtime/syscalls/sys_ppu_thread.c ps3_hot_thread, DES_HOTCORES=0 = off): Windows CPU sets. HighGraphics
+      claims slot 0 when its thread starts; the dispatcher claims slot 1 at the entry of its native chain (fix 112's
+      des_dispq_native, patches/lifted-code.patch). A claimed slot's thread selects its core and the core leaves the
+      process default set (every other thread, driver threads included). The cores: the fastest efficiency class
+      (Intel P-cores), best scheduling class (preferred cores) and then highest-numbered, inside the process affinity
+      mask (fix 65). Off with fewer than 6 usable cores of that class or with several processor groups. A slot that
+      moves to another thread takes its core along (the dispatcher task stays on one pool thread for the whole run).
+    - A/B at Latria 4-2 uncapped (3 each, rotating, player-like kit below): main 75.9 / 75.7 / 75.9, fix 132 79.1 /
+      78.8 / 79.3 fps (+4.3%), render CPU 8.7 -> 8.5 ms/frame.
+    - 1-1 at 60 fps (b11.sh 150-285 s, dropped frames by DXGI stats, destest/dropclass.py, 4 each): main 4 drops
+      (4 refreshes lost), fix 132 4 (9): no difference. The scripted walk barely drops at all; the user's 38-minute
+      session had 120 (69 with a late game step, 41 present/GPU side, 10 renderer), so 1-1 is no test for those.
+    - Test-kit finding: destest/run.sh set DES_PERF_STACK_EVERY=2, so the in-game sampler suspended HighGraphics
+      every 2 ms. Suspended while it held the lock line, it left the SPU pool threads spinning on it: whole-game
+      freezes of 50-90 ms in clusters 1.36 s apart (an external kernel/user-time poller, destest/ktimes.cs: five
+      "spu job" threads 60 ms of user time each, HighGraphics 5 ms). Players never run that mode (PLAY.bat samples
+      only steps already 28 ms late), and their recordings show no such clusters. run.sh now leaves it off
+      (STACK_EVERY=2 for profiles); 1-1 comparisons from fixes 128-131 and the first runs here had it on.
+    - Review (3 lenses + a refuter per finding): the core count included E-cores (a 2P+8E laptop would have put
+      every other thread on E-cores), cores parked at start were left out for the run, a reserved core stayed empty
+      for a slot nobody claims, and groups were matched against the wrong mask. All fixed before the A/B above.
+    - Ideas from other games' PS3 recomps (God of War Ascension, MaChInEgUn3/God-of-War-Ascension-Recompiled, MIT;
+      Ratchet & Clank Tools of Destruction, Re-TeRo17/ratchet-tod-recomp): the in-run lever above follows the
+      former's alternating-window A/B. Not taken yet: ppu_gcm_pump's empty check before its atomics (upstream
+      ps3recomp v0.19.0), -march=x86-64-v3 for lifted code, a lock-line long-wait log.
+    - Profile-guided build (clang -fprofile-instr-use, profile from one recorded test run): Latria uncapped 72.8 ->
+      73.6, render CPU 9.0 -> 8.4 ms/frame; 1-1 at 60 fps 21 -> 7 dropped refreshes over 3 runs (with the
+      every-2-ms sampler on, see above). Not shipped: the
+      profile (44 MB) is built from the disc's code, so it stays off the repo for now.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
