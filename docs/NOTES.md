@@ -3260,6 +3260,27 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
      - Checked (sandbox boss rush run with a copy of the user's stale hdd1): the log now has the opens of
        item.msgbnd.dcx, menu.msgbnd.dcx and param/gameparam/gameparamna.parambnd.dcx from /dev_bdvd, which the
        user's run lacked. Not checked: the shop's list itself on screen.
+141. **macOS: bushes drew as black boxes -- 2D transfer words landed in the 3D registers (2026-11-11, MacBook M2 Pro):**
+     - Seen in a capture of the Boletarian Palace start: every bush on the right is its whole quad, black around
+       the leaves. Not new: the capture from the day before has it too.
+     - Measured (RSX_ENGINE_PASS_DUMP + _DRAWS, RSX_ENGINE_REGDUMP_FP on the bush's fragment program): the register
+       file at the bush's draws had 0x0300 = 0xB, 0x0304 = 4, 0x0308 = 0x00010004, 0x030C = 0x00010004 -- no alpha
+       function at all, and alpha test off (bit 0 of 4) for the blended draws. Those are an NV3062 2D surface's
+       words (colour format 0xB = A8R8G8B8, pitch, offsets), not NV4097 state.
+     - Cause: rsx_draw_engine_method (the Metal path's register feed) stripped the subchannel from every method
+       below 0xE000 (& 0x1FFC). Demon's Souls has NV4097 on subchannel 0 and its 2D objects on the others
+       (NV0039 0x2000, NV3062 0x6000, NV309E 0x8000, NV308A 0xA000, NV3089 0xC000), which use the same low
+       addresses, so every transfer overwrote 3D registers 0x300..0x328: alpha test enable / function / reference
+       and, for NV0039, the blend enable, factors, equation and colour mask. rsx_live_draw.c (Windows) keeps the
+       subchannel in the address and never had this.
+     - Fix (rsx_draw_engine.c): the address keeps its subchannel (method & 0xFFFC), as on Windows.
+       PS3RECOMP_ENG_STRIP_SUBCHANNEL=1 is the old behaviour. The draws log of RSX_ENGINE_PASS_DUMP_DRAWS also
+       prints the alpha function and reference now ("af", "ar").
+     - Checked (sandbox, same warp and save): at the bush's draw 0x0308 = 0x204 (GREATER), 0x030C = 0x80, and
+       0x0300 / 0x0304 are no longer set by transfers; the capture shows the bushes cut out against the wall and
+       the rest of the picture as before. Two 120 s runs, no errors. The runtime patch's rsx_draw_engine.c
+       section was regenerated; the whole patch applies under core.autocrlf false / true / input and gives the
+       built files. Not checked: other areas, where the same overwrite may have changed blending.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

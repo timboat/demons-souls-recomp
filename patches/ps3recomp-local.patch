@@ -10451,7 +10451,7 @@ index c4e4d84..5a56bdd 100644
  /* ---- decoded state getters -------------------------------------------- */
  
 diff --git a/libs/video/rsx_draw_engine.c b/libs/video/rsx_draw_engine.c
-index 8dff6011..97a169f5 100644
+index 8dff6011..d8208657 100644
 --- a/libs/video/rsx_draw_engine.c
 +++ b/libs/video/rsx_draw_engine.c
 @@ -144,6 +144,8 @@ typedef struct {
@@ -11237,6 +11237,18 @@ index 8dff6011..97a169f5 100644
      if (!dc_reserve_verts((u64)dc.n_refs * layout->stride)) {
          dc.fetch_ok = 0;
          return;
+@@ -2873,9 +3582,9 @@ static void pd_note(const u32* targets, u32 n_targets, u32 zslot,
+     }
+     if (s_pd.draws_log) {
+         fprintf(s_pd.draws_log, "pass %03u draw %u: pipe %u cmask %08X blend %u %X/%X"
+-                " dt %u dw %u at %u |", s_pd.pass, s_pd.draws, pipeline, rs->color_mask,
++                " dt %u dw %u at %u af %X ar %08X |", s_pd.pass, s_pd.draws, pipeline, rs->color_mask,
+                 rs->blend_enable, rs->sf_rgb, rs->df_rgb, rs->depth_test, rs->depth_write,
+-                rs->alpha_test_enable);
++                rs->alpha_test_enable, rs->alpha_func, rs->alpha_ref_raw);
+         if (rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_FILL) & 1u) {
+             const u32 f = rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_FACTOR);
+             const u32 b = rsx_dsp_reg(&g.rsx, M_POLY_OFFSET_BIAS);
 @@ -3051,11 +3760,30 @@ static void sink_end(void* user, const rsx_dispatch* r)
  
      rsx_vertex_layout_plan layout;
@@ -11335,6 +11347,22 @@ index 8dff6011..97a169f5 100644
      /* The subchannel is a binding slot, not an engine selector, and a title
       * whose SPU-built command lists bind NV4097 elsewhere would otherwise
       * store its state in the wrong register bank.  Standard NV4097 methods
+@@ -3494,6 +4247,15 @@ void rsx_draw_engine_method(u32 method, u32 arg)
+      * (0xE9xx, 0xEBxx) encode the subchannel bits as part of the address;
+      * preserve them with the wider mask. */
+     u32 m = (method >= 0xE000u) ? (method & 0xFFFCu) : (method & 0x1FFCu);
++    /* Demon's Souls (NOTES fix 141): its NV4097 is on subchannel 0, and the 2D objects on the
++     * others (NV0039 0x2000, NV3062 0x6000, NV309E 0x8000, NV308A 0xA000, NV3089 0xC000) use the
++     * same low addresses: stripped, a transfer's 0x300..0x328 words landed in the 3D alpha test
++     * and blend registers (0x0304 = 4, 0x0308 = 0x0001_0004 ...), so the bushes' alpha test and
++     * blend state were whatever the last copy left there. Keep the subchannel in the address,
++     * as rsx_live_draw.c does; PS3RECOMP_ENG_STRIP_SUBCHANNEL=1 is the old behaviour. */
++    { static int strip = -1;
++      if (strip < 0) { const char* e = getenv("PS3RECOMP_ENG_STRIP_SUBCHANNEL"); strip = (e && atoi(e)) ? 1 : 0; }
++      if (!strip) m = method & 0xFFFCu; }
+     rsx_dispatch_method(&g.rsx, m, arg);
+ }
+ 
 diff --git a/libs/video/rsx_fp_decompiler.c b/libs/video/rsx_fp_decompiler.c
 index cfb9685..3d74415 100644
 --- a/libs/video/rsx_fp_decompiler.c
