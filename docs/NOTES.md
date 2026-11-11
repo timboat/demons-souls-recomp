@@ -2850,7 +2850,75 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       LD_PRESENT_PACE cannot be changed from the launcher's Extra settings: PLAY.bat sets 0.85 after them.
     - Still open: the user still sees some choppiness in perfect stretches. Next suspect is the camera's own motion
       (a capture of the vertex constants, LD_VPC_DUMP in a test build, found the shadow camera updating in 30 Hz
-      pairs; the view camera is not identified yet).
+      pairs; the view camera is not identified yet). Found later: frames shown out of order, fix 136.
+134. **Present-to-screen delay in the perf log; an opt-in frame-queue cap (2026-11-10, 5800X + RTX 3070, 60 Hz TV):**
+    - Perf notes "lat \<min\> \<median\> \<max\>" (ms, once a second) and "slip \<from\> \<to\>" (a move of over 2 ms):
+      each Present's number and time go in a ring, and when the frame statistics name the present a vblank showed,
+      the delay is that vblank's time minus the present's (libs/video/rsx_live_draw.c ld_pres_ring_note,
+      ld_pres_latency). Always on with the perf recording.
+    - LD_FRAME_LATENCY=1..3: a frame-latency waitable swap chain; before a vsync Present the drain thread waits
+      until the queue has room. Off by default: the wait runs on the thread that also ticks the guest clock, and
+      with fix 135 on it held a frame a whole extra refresh every \~2.4 s (guest clock 59.75-59.95 Hz). In a menu
+      run it cut latency slips 97 -> 24 per 100 s, but the user saw no difference.
+135. **LD_DPI_AWARE=1: full screen at the screen's real size under Windows display scaling (2026-11-10, 4K TV at 200%):**
+    - The game exe was not DPI aware (only the launcher is). With 200% scaling its borderless full-screen window
+      (fix 69) was 1920x1080, the swap chain followed it (fix 74), and Windows stretched it to 3840x2160 on a
+      scaling overlay plane: PresentMon showed "Hardware Composed: Independent Flip" for the whole of every
+      session, never the plain full-screen flip.
+    - Fix (libs/video/rsx_null_backend.c, off by default): LD_DPI_AWARE=1 makes the process per-monitor DPI aware
+      (V2) before the window exists. Full screen is then the monitor's real size (swap chain 3840x2160); the
+      windowed size is scaled by the system DPI so the window looks the same, and WM_DPICHANGED takes the size
+      Windows suggests when the window moves to a monitor with other scaling. The OSK name box
+      (libs/misc/cellOskDialog.c) keeps its thread DPI unaware: it is laid out in 96-DPI pixels.
+    - Measured: 60 fps, GPU wait p99 4.4 -> 5.9 ms; frames not one refresh in a spin 4 / 0 of 2399 (noise).
+      User: "better", still "a lil choppy" -- fix 136 was that.
+    - Review (3 lenses + a refuter each): the OSK box at half size with its buttons cut off, WM_DPICHANGED not
+      handled -- both fixed; the window sized from the system DPI rather than its monitor's (stays: WM_DPICHANGED
+      corrects a move); mouse-camera sensitivity changing -- refuted.
+136. **Frames shown out of order: a flip now waits for its frame's last commands (2026-11-11, 5800X + RTX 3070):**
+    - User, walking forward from the start of 1-1: "the camera just isn't keeping up sometimes", "as if the
+      camera is being warped forward". Not the TV.
+    - Everything the game computed was even: the follow camera (a temporary per-update dump of the camera
+      object: eye 0.0613 every update, 150 updates in a row before an F8 mark), the camera position the GPU got
+      (vertex constant c[158], dumped per present), one camera update per present, every frame up one refresh.
+    - The pictures were not. LD_VIDEO at LD_VIDEO_FPS=240 (240x135 grey; at 60 the capture grid itself can drop
+      or double a frame), identical slots collapsed back into presents (destest/vidrep.py): 7-10% of frames
+      changed about twice as much as their neighbours, over the whole picture, brightness-normalised too. Block
+      matching (destest/flow.py) gave the direction: forward, back one step, forward two -- frames out of order.
+    - A per-present log (temporary) of the surface shown and when it was last drawn: in 194 of 1604 presents of
+      the walk the buffer shown was last drawn before the one shown just before it -- a display buffer still
+      holding the frame from two flips ago.
+    - Cause: Demon's Souls flips with _cellGcmSetFlipCommand(ctx, buf). gcm_flip_into_fifo never had room for
+      its marker (the context reads current far past end every frame: 0x1A2xxxxx against end 0x1A00FFEC), so
+      every flip fell back to the immediate cellGcmSetFlipCommand. But the frame's tail -- \~48 KB between put and
+      ctx->current, the last draws into the display buffer among them -- was not flushed yet, and the ticker,
+      woken by the flip (fix 62), often presented first.
+    - Fix (libs/video/cellGcmSys.c; GCM_FLIP_AT_WRITE=0 = the old immediate flip): such a flip is queued with the
+      IO offset of ctx->current, and the walker fires it when get reaches that offset -- where the real RSX would
+      meet the flip command -- doing what the in-FIFO 0xFEAD marker does (buffer, count, present before draining
+      further, HSYNC completion). A flip not reached in GCM_VFLIP_TIMEOUT_MS (34) fires anyway; one that a resync
+      or recycle moved get past fires on the next pass. Perf note "vflip \<buf\> reached|timeout|skipped \<ms\>" for
+      each that waited 2 ms or more.
+    - Measured (scripted 1-1 walk, b11.sh): presents older than the one before 371 -> 0 a run; 12124 of 12127 flips
+      reached the write head, wait p50 0.19 ms, p99 5 ms (the long ones are shader builds: that frame really was
+      not finished), 2 timeouts in the area load; video frames jumping 153 -> 17 of 1615; frames not one refresh
+      9 / 9 of 2937.
+    - Scenarios (one run each unless noted): title screen with the intro movies, camera spin, uncapped and 30 fps
+      settings, an area load: no aborts, no stuck flips; flips that waited are shader builds and loads (one 394 ms
+      in a load). In the menus the walker first slept on to its next 4 ms wake after the title's flush (a PPU
+      put store does not kick it): one present in five came 4-5 ms late. While a write-head flip waits it now
+      looks every 0.25 ms (cellGcm_fifo_kick_wait_us, high-resolution timer only): menu present gaps over 20 ms
+      23 against 20 with the old flip. Latria 59.8-60.0 fps and 8.8 ms render either way. Frames up two refreshes
+      in the 1-1 walk, 3 runs each: 15 / 21 / 39 on, 8 / 28 off -- run to run noise of the same size, and they do
+      not line up with flips that waited.
+    - Review (3 lenses + a refuter each, then a second pass over the result): fixed -- the ring-recycle guard for
+      a pass that stops at a flip with the next frame queued now covers this stop too and wins over the overrun
+      case (titles whose ring the drain recycles; Demon's Souls sets GCM_NO_TITLE_RECYCLE); the NOP fast-skip
+      stops at the queued position; the streaming put pickup goes back to the loop top; resync / recycle
+      teleports fire the queued flips on the next pass; the flip is WAITING before the walker can see it; the
+      0.25 ms polling only on the high-resolution timer (else it would spin). Refuted: a timeout cascade (the
+      game waits for each flip before the next), out-of-order fallbacks with a full queue, completion of a later
+      queued flip by an earlier one (the 0xFEAD path does the same; one flip status, as on the real RSX).
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
