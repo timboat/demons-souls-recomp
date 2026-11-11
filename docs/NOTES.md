@@ -3041,6 +3041,30 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       now (libs/video/rsx_null_backend.c); LD_DPI_AWARE=0 = the old stretched window.
     - Checked (4K TV, 200% scaling): full screen swap chain 3840x2160; windowed 2560x1440, which looks the size the
       1280x720 window did before; LD_DPI_AWARE=0 full screen 1920x1080. At 100% scaling nothing changes.
+138. **Character portraits on the load screen showed without their face (2026-11-11, at 2x):**
+    - User: after quitting to the title, "the first character in the menu has a missing face texture". With
+      LD_TEX_HASH_EVERY=1 (every bound texture hashed in full every frame, as before fix 48) it was gone.
+    - Cause: fix 48's adaptive refresh -- a texture unchanged for 8 checks gets only a sparse probe (64 bytes of
+      every 4 KB) per frame and a full hash every 16th frame. A texture the title rewrites in place (the portraits,
+      movie frames) can change only between the probe's samples, and kept its old picture for up to 16 frames.
+    - Fix (libs/video/rsx_live_draw.c texture_srv_slot): only a texture that has never changed in place
+      (refreshes == 0) gets the probe; once rewritten it is hashed in full whenever it is used.
+    - Measured: Latria at 2x render 9.1 -> 9.0 ms a frame, the same fps. The user's portraits: fine.
+139. **The title logo flashed at 2x after quitting to the title (2026-11-11; fix 104 had called it a separate,
+    older bug):**
+    - User: "the demons souls logo starts flashing", also during its first animation, only at 2x and above.
+    - F12 captures: on a bad frame the logo draws sample a 1280x720 A8R8G8B8 texture at local 0x4123480 and come
+      out black; on a good frame the 1024x1024 logo, or another of the movie's buffers. The title logo is a
+      movie (ds_title.pam); cellSail fills the game's four frame buffers (0x4123480, 0x44A7500, 0x482B580,
+      0x4BAF600, one frame apart) in turn. Temporary probes in the user's build: every frame the player wrote had
+      a picture, buffer 0 included; but each draw of buffer 0 went to a cached render surface at that address --
+      a 64x64 target the game had rendered there earlier (218 times in one reproduction).
+    - Cause: when no surface at a texture's address has the texture's size, the most recently drawn one is
+      sampled anyway (kept for ps1_netemu, which samples its 720x512 surface as a 1024x512 texture). A 1280x720
+      movie frame then read a leftover 64x64 surface: black, every fourth movie frame.
+    - Fix (rsx_live_draw.c, the sampled-surface choice): a surface of a sixteenth of the texture's area or less is
+      no candidate; the texture reads guest memory. Checked: a 200 s 2x walk never hits that case (logged), and
+      its binds stay real 38.8 M / surface 0.38 M as before.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for
