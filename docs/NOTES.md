@@ -2919,6 +2919,11 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       0.25 ms polling only on the high-resolution timer (else it would spin). Refuted: a timeout cascade (the
       game waits for each flip before the next), out-of-order fallbacks with a full queue, completion of a later
       queued flip by an earlier one (the 0xFEAD path does the same; one flip status, as on the real RSX).
+137. **Full screen at the screen's real size is the default now (fix 135's switch, 2026-11-11):**
+    - User, after fix 136 on the 4K TV: "YOU DID IT" -- with LD_DPI_AWARE=1 on. The game is DPI aware by default
+      now (libs/video/rsx_null_backend.c); LD_DPI_AWARE=0 = the old stretched window.
+    - Checked (4K TV, 200% scaling): full screen swap chain 3840x2160; windowed 2560x1440, which looks the size the
+      1280x720 window did before; LD_DPI_AWARE=0 full screen 1920x1080. At 100% scaling nothing changes.
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for

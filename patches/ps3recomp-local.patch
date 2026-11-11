@@ -8206,7 +8206,7 @@ index 0000000..9b83eda
 +
 +#endif /* PS3RECOMP_PAD_INPUT_MAP_H */
 diff --git a/libs/misc/cellOskDialog.c b/libs/misc/cellOskDialog.c
-index 17e7c67..e66d2bd 100644
+index 17e7c67..51a17d2 100644
 --- a/libs/misc/cellOskDialog.c
 +++ b/libs/misc/cellOskDialog.c
 @@ -1,15 +1,16 @@
@@ -8360,7 +8360,7 @@ index 17e7c67..e66d2bd 100644
 +static DWORD WINAPI osk_window_thread(LPVOID arg)
 +{
 +    (void)arg;
-+    /* The box is laid out in fixed 96-DPI pixels: when the game is DPI aware (LD_DPI_AWARE=1, fix 135)
++    /* The box is laid out in fixed 96-DPI pixels: when the game is DPI aware (fix 135, default)
 +     * this thread stays DPI unaware, so Windows still scales it up as before instead of halving it. */
 +    { typedef HANDLE (WINAPI *set_thread_ctx_fn)(HANDLE);
 +      HMODULE user = GetModuleHandleW(L"user32.dll");
@@ -17560,7 +17560,7 @@ index ad8db0b..491a956 100644
  #endif
      return atomic_load(&s_closed) ? -1 : 0;
 diff --git a/libs/video/rsx_null_backend.c b/libs/video/rsx_null_backend.c
-index 32e8a95..0cd5c53 100644
+index 32e8a95..703e7eb 100644
 --- a/libs/video/rsx_null_backend.c
 +++ b/libs/video/rsx_null_backend.c
 @@ -9,6 +9,7 @@
@@ -17630,7 +17630,7 @@ index 32e8a95..0cd5c53 100644
          PostQuitMessage(0);
          return 0;
  
-+    case WM_DPICHANGED:   /* LD_DPI_AWARE=1 only (fix 135): moved to a monitor with other scaling */
++    case WM_DPICHANGED:   /* DPI aware (fix 135): moved to a monitor with other scaling */
 +        if (!s_fs) {      /* windowed: take the size Windows suggests; borderless keeps its monitor rect */
 +            const RECT* r = (const RECT*)lp;
 +            SetWindowPos(hwnd, NULL, r->left, r->top, r->right - r->left, r->bottom - r->top,
@@ -17730,14 +17730,14 @@ index 32e8a95..0cd5c53 100644
      s_state.height = height;
      s_state.clear_color = RGB(0, 0, 64); /* dark blue default */
  
-+    /* LD_DPI_AWARE=1 (TEST, fix 135): the game declares itself DPI aware, so with Windows display scaling
++    /* DPI aware (fix 135, on by default since fix 137; LD_DPI_AWARE=0 = off): with Windows display scaling
 +     * (200% on a 4K TV) its borderless fullscreen window is the monitor's real size and the swap chain
 +     * (which follows the client size, fix 74) is e.g. 3840x2160 instead of 1920x1080. Without it DWM
 +     * stretches the small swap chain to the screen, which puts the game on a scaling overlay plane
 +     * (PresentMon: "Hardware Composed: Independent Flip") instead of a plain flip of the whole screen.
 +     * The windowed size is scaled by the DPI so the window looks the same size as before. */
 +    { const char* e = getenv("LD_DPI_AWARE");
-+      if (e && e[0] == '1') {
++      if (!(e && e[0] == '0')) {
 +          typedef BOOL (WINAPI *set_ctx_fn)(HANDLE);
 +          typedef UINT (WINAPI *dpi_sys_fn)(void);
 +          HMODULE user = GetModuleHandleA("user32.dll");
