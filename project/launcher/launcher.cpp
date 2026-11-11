@@ -53,7 +53,9 @@ static bool find_root() {
 }
 
 enum { FPS_AUTO, FPS_30, FPS_50, FPS_60, FPS_UNLIMITED, FPS_CUSTOM };
-static const wchar_t* const GAME_DIRS[] = {L"game", L"game_remaster", L"game_mod"};
+// Game choices: the folder each plays (Boss rush: PLAY.bat makes game_bossrush from game, so game must be there)
+static const wchar_t* const GAME_DIRS[] = {L"game", L"game_remaster", L"game_mod", L"game"};
+enum { GAME_BOSS_RUSH = 3, GAME_COUNT = 4 };
 
 struct Settings {
     int fps = FPS_AUTO, custom = 72;
@@ -65,9 +67,12 @@ struct Settings {
     bool no_rebuild = false;  // DES_NO_REBUILD: after an update, play the build there is
     bool skip_intro = false;  // DES_SKIP_INTRO: straight to PRESS START
     bool vrr = false;         // DES_VRR: a G-Sync / FreeSync screen (vsync off may tear, 60 fps vsync off)
+    int br_souls = 1;         // DES_BR_SOULS: boss rush souls multiplier (BR_SOULS_CHOICES)
     wstring extra;            // NAME=value NAME=value ...
 };
 static Settings g_set;
+static const int BR_SOULS_CHOICES[] = {1, 2, 3, 5, 10};
+enum { BR_SOULS_N = (int)(sizeof BR_SOULS_CHOICES / sizeof *BR_SOULS_CHOICES) };
 
 // Key bindings (NOTES fix 103): launcher.ini [controls] <action>=<KEY>[+<KEY>] (no line = the default, empty =
 // unbound). The game gets the ones that differ from the defaults as PAD_KEYS (libs/input/cellPad.c s_kb: the same
@@ -132,7 +137,7 @@ static void load_settings() {
     s.custom = ini_int(L"custom_fps", s.custom);
     s.res = std::clamp(ini_int(L"res_scale", s.res), 1, 4);
     s.shadow = ini_int(L"shadow_scale", s.shadow) != 0;
-    s.game = std::clamp(ini_int(L"game", s.game), 0, 2);
+    s.game = std::clamp(ini_int(L"game", s.game), 0, GAME_COUNT - 1);
     s.fullscreen = ini_int(L"fullscreen", s.fullscreen) != 0;
     s.movies = ini_int(L"movies", s.movies) != 0;
     s.god = ini_int(L"god_mode", s.god) != 0;
@@ -143,6 +148,7 @@ static void load_settings() {
     s.no_rebuild = ini_int(L"no_rebuild", s.no_rebuild) != 0;
     s.skip_intro = ini_int(L"skip_intro", s.skip_intro) != 0;
     s.vrr = ini_int(L"vrr", s.vrr) != 0;
+    s.br_souls = std::clamp(ini_int(L"boss_rush_souls", s.br_souls), 1, 100);
     wchar_t buf[2048];
     GetPrivateProfileStringW(L"launcher", L"extra", L"", buf, 2048, g_ini.c_str());
     s.extra = buf;
@@ -166,6 +172,7 @@ static void save_settings() {
     ini_put(L"no_rebuild", s.no_rebuild);
     ini_put(L"skip_intro", s.skip_intro);
     ini_put(L"vrr", s.vrr);
+    ini_put(L"boss_rush_souls", s.br_souls);
     ini_put(L"extra", s.extra);
     save_keys();
 }
@@ -243,7 +250,10 @@ static wstring game_env(const Settings& s) {
     env(L"LD_RES_SCALE", nullptr);                 // it would win over DES_RES_SCALE
     envif(L"DES_RES_SCALE", s.res > 1, res.c_str());
     envif(L"LD_RES_SCALE_SHADOW", s.res > 1 && s.shadow, L"1");
-    env(L"DES_GAME", GAME_DIRS[s.game]);
+    env(L"DES_GAME", s.game == GAME_BOSS_RUSH ? nullptr : GAME_DIRS[s.game]);
+    envif(L"DES_BOSS_RUSH", s.game == GAME_BOSS_RUSH, L"1");
+    wstring souls = std::to_wstring(s.br_souls);
+    envif(L"DES_BR_SOULS", s.game == GAME_BOSS_RUSH && s.br_souls > 1, souls.c_str());
     envif(L"DES_FULLSCREEN", s.fullscreen, L"1");
     envif(L"DES_MOVIES", !s.movies, L"0");
     envif(L"DES_GOD", s.god, L"1");
@@ -334,7 +344,8 @@ static bool can_play(HWND w, const Settings& s) {
         static const wchar_t* const how[] = {
             L"The game files are not in the game folder. Run SETUP.bat.",
             L"The PC Remaster mod is not installed (game_remaster). See \"Optional: PC Remaster mod\" in README.md.",
-            L"No models imported yet (game_mod). See models\\README.txt."};
+            L"No models imported yet (game_mod). See models\\README.txt.",
+            L"The game files are not in the game folder. Run SETUP.bat."};
         MessageBoxW(w, how[s.game], L"Demon's Souls", MB_ICONWARNING);
         return false;
     }
@@ -369,9 +380,9 @@ static HANDLE start_game(const Settings& s) {
 // The window
 // ---------------------------------------------------------------------------------------------
 enum {
-    ID_PLAY = IDOK, ID_FPS = 100, ID_CUSTOM, ID_FPS_HINT, ID_RES, ID_SHADOW, ID_GAME0, ID_GAME1, ID_GAME2,
+    ID_PLAY = IDOK, ID_FPS = 100, ID_CUSTOM, ID_FPS_HINT, ID_RES, ID_SHADOW, ID_GAME0, ID_GAME1, ID_GAME2, ID_GAME3,
     ID_FULLSCREEN, ID_MOVIES, ID_GOD, ID_RECORD, ID_DUMP, ID_LETTER, ID_PIN, ID_NOREBUILD, ID_SKIPINTRO, ID_VRR, ID_EXTRA,
-    ID_UPDATE, ID_REPORT, ID_CONTROLS, ID_FOLDERS, ID_STATUS,
+    ID_UPDATE, ID_REPORT, ID_CONTROLS, ID_FOLDERS, ID_STATUS, ID_BRSOULS,
     ID_F_SAVES = 200, ID_F_LOGS, ID_F_PERF, ID_F_REPLACE, ID_F_DUMP, ID_F_CAPTURES, ID_F_MODELS, ID_F_ROOT,
 };
 static const UINT WM_GAME_DONE = WM_APP + 1, WM_UPDATE_CHECKED = WM_APP + 2;
@@ -511,7 +522,7 @@ static void read_controls() {
     if (s.fps == FPS_CUSTOM || _wtoi(b) > 0) s.custom = _wtoi(b);   // empty while Custom: can_play says so
     s.res = (int)SendMessageW(item(ID_RES), CB_GETCURSEL, 0, 0) + 1;
     s.shadow = checked(ID_SHADOW);
-    for (int g = 0; g < 3; ++g)
+    for (int g = 0; g < GAME_COUNT; ++g)
         if (checked(ID_GAME0 + g)) s.game = g;
     s.fullscreen = checked(ID_FULLSCREEN);
     s.movies = checked(ID_MOVIES);
@@ -523,6 +534,10 @@ static void read_controls() {
     s.no_rebuild = checked(ID_NOREBUILD);
     s.skip_intro = checked(ID_SKIPINTRO);
     s.vrr = checked(ID_VRR);
+    {
+        int i = (int)SendMessageW(item(ID_BRSOULS), CB_GETCURSEL, 0, 0);
+        if (i >= 0 && i < BR_SOULS_N) s.br_souls = BR_SOULS_CHOICES[i];
+    }
     GetWindowTextW(item(ID_EXTRA), b, 2048);
     s.extra = b;
 }
@@ -536,7 +551,7 @@ static void write_controls() {
     check(ID_SHADOW, s.shadow);
     EnableWindow(item(ID_SHADOW), s.res > 1);
     int game = game_present(s.game) ? s.game : 0;
-    for (int g = 0; g < 3; ++g) {
+    for (int g = 0; g < GAME_COUNT; ++g) {
         check(ID_GAME0 + g, g == game);
         if (g) EnableWindow(item(ID_GAME0 + g), game_present(g));
     }
@@ -550,6 +565,12 @@ static void write_controls() {
     check(ID_NOREBUILD, s.no_rebuild);
     check(ID_SKIPINTRO, s.skip_intro);
     check(ID_VRR, s.vrr);
+    {
+        int sel = 0;
+        for (int i = 0; i < BR_SOULS_N; ++i) if (BR_SOULS_CHOICES[i] <= s.br_souls) sel = i;
+        SendMessageW(item(ID_BRSOULS), CB_SETCURSEL, sel, 0);
+        EnableWindow(item(ID_BRSOULS), game == GAME_BOSS_RUSH);
+    }
     SetWindowTextW(item(ID_EXTRA), s.extra.c_str());
     g_loading = false;
     update_fps_hint();
@@ -1176,12 +1197,22 @@ static void create_controls() {
     y += 32;
 
     label(L"Game", L, y + 3, 92);
-    add(WC_BUTTONW, L"Normal", BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP, ID_GAME0, X, y, 74, 22, L"Your game as on the disc.");
-    add(WC_BUTTONW, L"PC Remaster mod", BS_AUTORADIOBUTTON, ID_GAME1, X + 76, y, 128, 22,
+    add(WC_BUTTONW, L"Normal", BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP, ID_GAME0, X, y, 64, 22, L"Your game as on the disc.");
+    add(WC_BUTTONW, L"PC Remaster", BS_AUTORADIOBUTTON, ID_GAME1, X + 66, y, 96, 22,
         L"The \"Demon's Souls PC Remaster\" mod by fromsoftserve (game_remaster). Install it with "
         L"tools\\install_remaster.py, see README.md.");
-    add(WC_BUTTONW, L"My models", BS_AUTORADIOBUTTON, ID_GAME2, X + 206, y, 110, 22,
+    add(WC_BUTTONW, L"My models", BS_AUTORADIOBUTTON, ID_GAME2, X + 164, y, 86, 22,
         L"The copy with your imported models (game_mod, made by tools\\flver_tool.py import).");
+    add(WC_BUTTONW, L"Boss rush", BS_AUTORADIOBUTTON, ID_GAME3, X + 252, y, 80, 22,
+        L"Boss rush mode: a new character starts in the Nexus with 7,000 souls; each archstone takes you to its "
+        L"world's next boss, a timer runs from the first boss fog to King Allant. Its own saves (bossrush\\).");
+    y += 30;
+    label(L"Boss rush souls", L, y + 3, 92);
+    c = add(WC_COMBOBOXW, nullptr, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, ID_BRSOULS, X, y, 140, 200,
+            L"Boss rush only: every enemy and boss gives this many times its souls (picking up your bloodstain gives back "
+            L"what you lost). The timer shows it when it is not 1x, for videos and runs.");
+    for (const wchar_t* t : {L"1x (the game's own)", L"2x", L"3x", L"5x", L"10x"})
+        SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)t);
     y += 34;
 
     const int C2 = L + W / 2;
@@ -1243,7 +1274,7 @@ static void create_controls() {
     label(L"", L, y, W, 20, ID_STATUS);
 }
 
-static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 34 + 26 * 5 + 34 + 36 + 54 + 36 + 20 + 12; }
+static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 30 + 34 + 26 * 5 + 34 + 36 + 54 + 36 + 20 + 12; }
 
 static LRESULT CALLBACK wndproc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {
@@ -1278,6 +1309,8 @@ static LRESULT CALLBACK wndproc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
             }
         } else if (id == ID_CUSTOM && code == EN_CHANGE && !g_loading) update_fps_hint();
         else if (id == ID_VRR && code == BN_CLICKED) update_fps_hint();
+        else if (id >= ID_GAME0 && id <= ID_GAME3 && code == BN_CLICKED)
+            EnableWindow(item(ID_BRSOULS), checked(ID_GAME3));
         else if (id == ID_RES && code == CBN_SELCHANGE)
             EnableWindow(item(ID_SHADOW), SendMessageW(item(ID_RES), CB_GETCURSEL, 0, 0) > 0);
         return 0;

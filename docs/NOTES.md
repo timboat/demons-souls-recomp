@@ -2252,6 +2252,108 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       hidden: `sync_patches()` recompiled in 1 min 39 s and recorded the current patch. The running-game block
       (copied with a fake process name, so no real game could be closed): nothing running -> starts; running + N
       -> stops; running + Y -> the process ends, starts. The message box command parses and maps Yes/No right.
+100. **Boss rush mode (2026-11-05 to -06, asked for: "I wanna do boss rush mode"; design and every step
+    hand-tested by the user in a sandbox copy, prototypes 1-25):**
+    - Launcher *Game: Boss rush* = DES_BOSS_RUSH=1. PLAY.bat then runs `tools/make_boss_rush.py` (game_bossrush/,
+      hard links to game/ plus the files below, rebuilt when the tool or the module changes; ~12 s), plays it with
+      saves in bossrush\gamedata (PS3_GAMEDATA_ROOT) and the timer's files in bossrush\ (DES_BOSS_RUSH_DIR).
+    - The event-script module `tools/boss_rush/bossrush.lua`, appended to global_event.lua of the 7 script bundles
+      with BR_MapLoad(proxy) at the end of g_Initialize (it runs before the map's own Initialize, so flag changes
+      there decide how the map loads; a 1 s timer then replaces handlers the map script defined):
+      - A character's first load (flag 4129): 7,000 souls (3,000 before 2026-11-11), the timer cleared. A new character never sees the
+        tutorial or the "Would you like to play the journey to the Nexus?" prompt (menu FMG 78 id 45500): the
+        lifted character start does what the answer "No" does (ppu_recomp_018.cpp, br_on()): state 29
+        func_00185158 normally sends a save that has never done the tutorial (+0x34 == 0) straight there (+0x58 =
+        0x08000000, state 0x21) and else shows the prompt; state 30 func_00185530 reads the answer (1 = the
+        tutorial, as above; 0 / 2 = +0x58 = 0x01000000, chr type 8 = soul form, the Nexus). In boss rush state 29
+        always takes the prompt branch without showing it and state 30 reads 2, so every new character starts in
+        the Nexus in soul form (before, a save's first character went through the tutorial and came out in body
+        form). (State table at 0x018D17FC, state at +8.) The tutorial is still skipped from the scripts as a
+        fallback: its own ending (Tutorial_end, ChangeGreyGhost, WarpNextStage(1,0,0,0,-1)).
+      - Every load: the Nexus traders' state groups set to "in the Nexus" (Yuria 16115, Saint Urbain 16124, Sage
+        Freke 16191 -- ROGARN in the scripts --, Patches 16255, Thomas 16350, Boldwin 16440, the info seller 16341;
+        not if hostile/dead; Yurt and Mephistopheles left out), and the Monumental's first visit as seen (31, 303,
+        34, 36, 8802, 8030): the Maiden's talk script t0615 only levels you up after 303.
+      - The Nexus world archstones (OnEvent_0..4) offer the world's next unbeaten boss, "Fight <boss>?", then the
+        game's touch animation, NPC warp state and WarpNextStage to the boss map. A cleared world gets the game's
+        own menu.
+      - A boss map load with a boss pending (flags 4106-4110): its kill / soul / archstone flags cleared before
+        the init (the map rebuilds the room with the boss alive), current boss = 4120-4124.
+      - Each boss archstone's warp action (OnEvent_<w>) asks "Fight <next boss>?" / "Return to the Nexus?"
+        (OnSelectMenu type 2, Yes only: they alternate per touch).
+      - Arriving at the Adjudicator: the Shrine of Storms skeletons within 30 m of his fog switched off
+        (InvalidCharactor; m03_01 wakes each within 30 m, one lies 2.5 m from the fog). Fool's Idol: her reviver
+        (the Revival Enchanter, 500) set dead before the init (390 / 391, as RevivalEnchanterDead_390 does): her
+        death only counts with 390 set (OnEvent_5123_call), else she is revived and the cutscene up to her
+        archstone (410, region 2030) never comes -- found in the hand test. Arriving in the Nexus
+        with a boss current (the Nexial Binding, Evacuate) clears it, so a death there is the game's own.
+      - SoloPlayDeath_2 replaced: with a current boss, WarpNextStage back to its fog in body form (no
+        SetChrTypeDataGreyNext, 16700 off), the boss reset unless already dead.
+      - King Allant: only his fog entry (61) and death (70) are watched, for the timer; the fight and the endings
+        are the game's own.
+      - The timer events go out as print("BRX ...").
+      - "BRX ingame" (1 s after every map load): the timer is hidden until the first one, so not on the title
+        screen or character creation.
+      - The run timer pauses (asked for: "the timer should pause for loading screens AND for cutscenes"): a pause
+        moves the timer's start point forward, so splits and saves are unchanged. Loading: "BRX loading" at the start
+        of every map load (BR_MapLoad) and before each of the module's own WarpNextStage calls, until "BRX ingame",
+        which gives back its 1 s of play. (DsMenuDlgNowLoading_vf03, the loading dialog's match of the title's
+        per-frame vf03, is never called: measured.) Cutscenes: br_mark(2) in the remo camera sampler func_005F71D0
+        (fix 80; every frame of an in-engine cutscene). The title screen: br_mark(3) in DsMenuDlgTitle_vf03 (fix 96).
+        A step within 60 ms of a mark is still paused; before the first "BRX ingame" of a session nothing counts.
+        Each pause is logged ("[bossrush] timer paused 3.1 s (loading screen)"). Checked (scratch sandbox, a copy
+        of the rush save, scripted load + DES_WARP_AT): title 16.1 s, not in the game yet 6.0 + 8.9 s, two loading
+        screens 3.1 s each left out; 88 s counted in a 130 s session.
+    - make_boss_rush.py also: moves each boss map's archstone warp point (MSB player part) onto its fog region,
+      0.5 m up, facing the fog -- landing at the archstone point started the fight (it is in the arena), and a
+      teleport after the load made the area stream in at once (texture flashing) and dropped the player through
+      False King's floor. False King's fog is on top of elevator 1620 (its platform is the floor there, parked at
+      the bottom by his map's init): his point is on the elevator at the bottom and the module rides it up
+      (LuaCallStart(1635, 3)). FMG 30 (event texts) gets 16 "Fight <boss>?" in empty slots (the Nexus stones and
+      the after-kill box). Boldwin's shop (ShopLineupParam: 32-byte rows, +1 equip type 0 weapon / 3 goods, +4
+      item, +8 price): row 9009 = the Dregling Merchant's Firebomb row 1002; rows 9010-9157 = copies of his own
+      rows with Turpentine, the 47 named upgrade stones (goods 2000-2057 but the unused 2054) and 100 more base
+      weapons / shields / catalysts / talismans / bows / ammo (id % 100 == 0 with an English name, minus the
+      wandering-demon placeholders, No Equipment, the unnamed sniper arrow and the Torch, which has no weapon row);
+      his talk script t0694.esd (m01.talkesdbnd) opens rows 9000-9099, now 9000-9299 (one int literal: 0x82 +
+      little-endian int32). The Nexial Binding (goods 1033: behavior 3110 -> SpEffectParam 3110) and the miracle
+      Evacuate (behavior 2008 -> SpEffectParam 1513) have the same effect row but for +0x2C (1 = the souls are
+      lost): 0 there, and its yes/no box (goods +0x3C) is Evacuate's "Return to the Nexus?" (10010710) instead of
+      "Forfeit all Souls and return?" (10010712).
+    - Boldwin also sells every armour piece (72: helms 1xxxxx, armour 2xxxxx, gauntlets 3xxxxx, leggings 4xxxxx,
+      minus No Equipment, the black phantoms' sets x9xxxx and the Old Monk's wrappings 180000; 1000 souls each) and
+      every named ring (100-121, 123-126; 1500 each): ShopLineupParam +1 = 1 armour / 2 ring, rows copied from a
+      weapon row with the type byte set (BOLDWIN_ARMOUR / BOLDWIN_RINGS, checked against EquipParamProtector /
+      EquipParamAccessory).
+    - Souls multiplier: the launcher's *Boss rush souls* (1x 2x 3x 5x 10x, launcher.ini boss_rush_souls) sets
+      DES_BR_SOULS; make_boss_rush.py multiplies NpcParam +0x3C (an enemy's souls) and GameAreaParam +0 / +4 (a
+      boss's) by it (capped at 99,999,999), and puts "souls xN" in game_bossrush's stamp, so a change rebuilds it.
+      The timer shows "Souls xN" first on its second line (and in splits.txt / results.txt) when N > 1.
+    - The timer is drawn in the game's own font: make_boss_rush.py writes bossrush/timer_font.bin ('BRF1': 64 px
+      glyphs from FONT/NA_ENGLISH/dsfont24 via kbm_icons.py's reader, luminance + alpha); ds_boss_rush.cpp lays out
+      bare cream / gold text with a soft shadow, bottom centre, as a premultiplied RGBA picture for a new renderer
+      image overlay, ps3_overlay_image (rsx_live_draw.c: a 2048x512 texture, 3 upload slots, a blended PSO on the
+      swap-chain blit's root signature). It flickered while loading: the overlay took a descriptor table from the
+      SRV ring, which can be full on a busy frame (the overlay was skipped) and is recycled at every flush -- it
+      now has its own table after the ring (the heap is one table bigger) -- and it sampled a texel past its
+      picture (an older, wider one): the UVs are inset to texel centres. Without the font file the 5x7 text
+      overlay is used.
+    - The BR_GC pacing (collectgarbage every 2 s) is gone: it was for the Penetrator crash, which was fix 101
+      (guest setjmp/longjmp), not Lua memory -- the event scripts' heap stayed flat at ~1 MB.
+    - Linux: linux/play.sh takes DES_BOSS_RUSH=1 the same way (game_bossrush, bossrush/gamedata, the timer dir).
+    - The port (project/ds_boss_rush.cpp; hooks in lifted-code.patch): the scripts' print hook (func_00C02C78)
+      passes "BRX" lines on; the per-step hook (func_0001B8D0) calls br_step() and adds queued souls to the player
+      game data (*(*(*(TOC[-0x788C] - 0x8000)) + 8), souls at +0x78 after the 8 stat pairs). Real-time timer, state
+      saved every 5 s (a restart continues, closed time not counted), splits.txt / results.txt. The clock is drawn
+      by a new renderer text overlay, ps3_overlay_set (rsx_live_draw.c: 5x7 font as ClearRenderTargetView rects on
+      the swap chain buffer, ONE rect per call -- 58 rects in one call failed fast with 0xC0000409); a no-op on
+      the non-D3D12 builds (macOS: no boss rush yet -- mac/play.sh has no DES_BOSS_RUSH).
+    - Checked: every step in the user's hand tests; the module against a mock game (all flows: first load, Nexus
+      select, reset, death before / after the kill, both archstone boxes, a second Nexus visit, King Allant, the
+      tutorial skip; later the Adjudicator's skeletons and the Nexus clearing the boss); make_boss_rush.py --check
+      (every shop item asserted to exist in EquipParamGoods / EquipParamWeapon); a scratch release setup updated by
+      BUILD.bat with the new patches (runtime + 2 recompiled files re-applied in place) and launched in boss rush
+      mode to the title.
 101. **Crash in Penetrator's fight: guest setjmp/longjmp (2026-11-07; the user's report: a slash, a
     death and soul pickup):**
     - Mid-fight (a slash, a death and soul pickup, \~1 min in) the game died reading NULL in luaV_execute
