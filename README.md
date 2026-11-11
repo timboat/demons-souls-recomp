@@ -168,11 +168,13 @@ Saves go to `gamedata/`, and logs to `logs/`; they grow ~600 MB an hour, and the
 
 *Game: Boss rush* in the launcher (or `DES_BOSS_RUSH=1 linux/play.sh`; not on macOS yet). Make a new character:
 you skip the tutorial and start in the Nexus in soul form, with 7,000 souls and every trader there. Boldwin also
-sells every weapon and shield, every armour piece and ring, every upgrade material, Turpentine and Firebombs.
+sells every weapon and shield, every armour piece and ring, every upgrade material, Turpentine and Firebombs,
+priced by tier: the best weapons 40,000-75,000, top armour sets 30,000-50,000, rings 5,000-50,000, and items normal
+shops sell at their usual price, so a run's boss souls buy a build but not everything.
 - **Pick a boss:** each world's archstone offers that world's next unbeaten boss and puts you at its fog gate.
 - **After a kill:** the boss's archstone offers the next boss (*Fight the Tower Knight?*) or *Return to the Nexus?*
 - **Dying:** you go back to the same boss's fog in body form.
-- **The Nexial Binding** takes you back to the Nexus and keeps your souls.
+- **The Nexial Binding** takes you back to the Nexus and keeps your souls (its description says so too).
 - **The run** ends when King Allant dies; his fight and the ending are the game's own.
 - **The timer** at the bottom of the screen appears once you are in the game. It starts at the first fog and pauses
   on loading screens, cutscenes and the title screen (and while the game is closed). Splits and the final time go to

@@ -9,7 +9,8 @@ first (a hard link is shared with game/) and written new, so game/ is never touc
   global_event.lua, with a BR_MapLoad(proxy) call at the end of g_Initialize;
 - the 16 boss maps (MAP/MAPSTUDIO/*.msb): each boss's archstone warp point moved onto its fog gate, facing the
   fog, so a warp lands there (False King's: on his elevator at the bottom, which the module rides up);
-- the event texts (MSG/NA_ENGLISH/menu.msgbnd): "Fight <boss>?" in empty slots;
+- the event texts (MSG/NA_ENGLISH/menu.msgbnd): "Fight <boss>?" in empty slots; the item texts
+  (MSG/NA_ENGLISH/item.msgbnd): the Nexial Binding's description and story say it keeps your souls;
 - the shops (PARAM/GAMEPARAM/gameparamna.parambnd): Boldwin also sells Firebombs (a copy of the Dregling Merchant's
   ShopLineupParam row 1002 as 9009), Turpentine, every upgrade material and every weapon / shield / catalyst /
   talisman / bow / ammo (BOLDWIN_GOODS / BOLDWIN_WEAPONS: rows 9010 on, copies of his own rows with the item and
@@ -56,7 +57,7 @@ SCRIPT_BUNDLES = ('m01', 'm02', 'm03', 'm04', 'm05', 'm06', 'm08')
 # upgrade stone (goods 2000-2057) but the unused Shard of Meltstone (2054).
 SHOP_FIRST_ROW = 9010
 SHOP_LAST_ROW = 9299          # his talk script's new upper bound (was 9099)
-MAT_PRICE = {'shard': 300, 'large': 800, 'chunk': 1500, 'pure': 5000}
+MAT_PRICE = {'shard': 300, 'large': 800, 'chunk': 1500, 'pure': 10000}
 BOLDWIN_GOODS = [(1015, 400)] + [(i, MAT_PRICE[k]) for i, k in [
     (2000, 'shard'), (2001, 'large'), (2002, 'chunk'), (2003, 'pure'), (2004, 'shard'), (2005, 'large'),
     (2006, 'chunk'), (2007, 'pure'), (2012, 'shard'), (2013, 'chunk'), (2014, 'pure'), (2015, 'shard'),
@@ -66,8 +67,72 @@ BOLDWIN_GOODS = [(1015, 400)] + [(i, MAT_PRICE[k]) for i, k in [
     (2037, 'chunk'), (2038, 'pure'), (2039, 'shard'), (2040, 'chunk'), (2041, 'pure'), (2042, 'shard'),
     (2043, 'chunk'), (2044, 'pure'), (2045, 'shard'), (2046, 'chunk'), (2047, 'pure'), (2048, 'shard'),
     (2049, 'chunk'), (2050, 'pure'), (2055, 'large'), (2056, 'large'), (2057, 'large')]]
+# Prices (souls) by item id: what normal shops charge where they sell it (Brushwood capped), else by tier: best weapons
+# 40,000-75,000, strong 15,000-30,000, solid 2,000-8,000. Against a run's 374,382 souls from the 16 bosses at 1x.
+WEAPON_PRICE = {i: p for p, ids in {
+    75000: [21500],
+    60000: [20900, 21000],
+    50000: [21600, 40700],
+    45000: [50500],
+    40000: [21700, 21800, 70300, 90200],
+    30000: [20700, 21900, 60500, 130500, 150700, 151200],
+    25000: [40900, 60700, 100200],
+    20000: [20800, 21300, 30400, 40500, 70400, 80300, 90100, 90500, 150900],
+    15000: [10500, 10600, 30200, 40600, 130400, 140200, 150400, 151100, 151400],
+    10000: [50300],
+    8000: [40400, 150600],
+    6000: [20500, 20600, 50200, 80100],
+    5000: [10400, 20300, 50400, 60400, 80200, 90400, 130300, 140100],
+    4000: [20400, 30300, 60200, 70100, 80000, 150500, 151300],
+    3000: [10700, 30100, 40100, 40200, 60100, 60300, 100100, 130100, 130200, 150200],
+    2000: [10100, 10200, 20100, 100000, 140000],
+    1500: [20200, 21100, 30000, 40300, 70000, 130000, 150000],
+    1000: [40000, 90000, 150800, 151500],
+    500: [21400, 60000, 60600, 150100, 160700],
+    400: [160500],
+    200: [151000, 160600],
+    100: [170200],
+    50: [160200, 160400],
+    40: [170100],
+    30: [160100],
+    10: [170300],
+    5: [160800],
+}.items() for i in ids}
+# Armour: a full set's price split helm 20% / body 40% / hands 20% / legs 20% near enough; top sets 30,000-50,000.
+ARMOUR_PRICE = {i: p for p, ids in {
+    20000: [201100],
+    16000: [200800, 200900],
+    15000: [200500],
+    14000: [201900],
+    12000: [201000, 300800, 400800],
+    10000: [100800, 101100, 300500, 301100, 400500, 401100],
+    8000: [100000, 100100, 100900, 300900, 301700, 400900],
+    7000: [101900, 301900, 401900],
+    6000: [101000, 200700, 301000, 401000],
+    5000: [100500, 201200, 201400],
+    4000: [200200, 200400],
+    3500: [301200, 401200],
+    3000: [100700, 201800, 202000, 300400, 300700, 400400, 400700],
+    2500: [101400, 301400, 401400],
+    2000: [100200, 100400, 200000, 200100, 300200, 400200],
+    1500: [102000, 102100, 200300, 200600, 301800, 302000, 401800, 402000],
+    1200: [300600, 400600],
+    1000: [100600, 202100, 300000, 300100, 400000, 400100],
+    800: [300300, 400300],
+    500: [100300, 101800, 302100, 402100],
+}.items() for i in ids}
+# Rings: 5,000 (no use in a rush) to 30,000; the Ring of Avarice keeps its 50,000.
+RING_PRICE = {i: p for p, ids in {
+    50000: [120],
+    30000: [104, 105, 106],
+    25000: [109],
+    20000: [102, 111, 112, 123, 124],
+    15000: [100, 103],
+    8000: [101, 107, 116, 121, 125, 126],
+    5000: [108, 110, 113, 114, 115, 117, 118, 119],
+}.items() for i in ids}
 BOLDWIN_SELLS = (10000, 20000, 50000, 150300, 160000, 170000)   # his own weapon rows
-BOLDWIN_WEAPONS = [(i, 20 if 160000 <= i < 180000 else 1000) for i in [
+BOLDWIN_WEAPONS = [(i, WEAPON_PRICE[i]) for i in [
     10000, 10100, 10200, 10400, 10500, 10600, 10700, 20000, 20100, 20200, 20300, 20400, 20500, 20600, 20700, 20800,
     20900, 21000, 21100, 21300, 21400, 21500, 21600, 21700, 21800, 21900, 30000, 30100, 30200, 30300, 30400, 40000,
     40100, 40200, 40300, 40400, 40500, 40600, 40700, 40900, 50000, 50200, 50300, 50400, 50500, 60000, 60100, 60200,
@@ -79,14 +144,14 @@ BOLDWIN_WEAPONS = [(i, 20 if 160000 <= i < 180000 else 1000) for i in [
 # Armour (equip type 1): every wearable piece -- helms 1xxxxx, armour 2xxxxx, gauntlets 3xxxxx, leggings 4xxxxx --
 # minus "No Equipment", the roaming black phantoms' sets (x9xxxx) and the Old Monk's head wrappings (180000).
 # Rings (type 2): every named ring (100-126; 0 is a test entry).
-BOLDWIN_ARMOUR = [(i, 1000) for i in [
+BOLDWIN_ARMOUR = [(i, ARMOUR_PRICE[i]) for i in [
     100000, 100100, 100200, 100300, 100400, 100500, 100600, 100700, 100800, 100900, 101000, 101100, 101400, 101800,
     101900, 102000, 102100, 200000, 200100, 200200, 200300, 200400, 200500, 200600, 200700, 200800, 200900, 201000,
     201100, 201200, 201400, 201800, 201900, 202000, 202100, 300000, 300100, 300200, 300300, 300400, 300500, 300600,
     300700, 300800, 300900, 301000, 301100, 301200, 301400, 301700, 301800, 301900, 302000, 302100, 400000, 400100,
     400200, 400300, 400400, 400500, 400600, 400700, 400800, 400900, 401000, 401100, 401200, 401400, 401800, 401900,
     402000, 402100]]
-BOLDWIN_RINGS = [(i, 1500) for i in list(range(100, 122)) + list(range(123, 127))]
+BOLDWIN_RINGS = [(i, RING_PRICE[i]) for i in list(range(100, 122)) + list(range(123, 127))]
 TALK_BOLDWIN = 't0694.esd'
 
 
@@ -251,6 +316,57 @@ def fmg_set(f, texts):
         f += b'\0'
     struct.pack_into('>I', f, 4, len(f))
     return bytes(f)
+
+
+def fmg_replace(f, texts):
+    """Point existing (big-endian) FMG strings at new text, appended at the end; the old text stays, unused."""
+    f = bytearray(f)
+    ng, ns, soff = struct.unpack_from('>III', f, 0xC)
+    for tid, text in texts.items():
+        idx = None
+        for g in range(ng):
+            fi, a, z = struct.unpack_from('>iii', f, 0x1C + 12 * g)
+            if a <= tid <= z:
+                idx = fi + tid - a
+        assert idx is not None and struct.unpack_from('>I', f, soff + 4 * idx)[0] != 0, ('no text to replace', tid)
+        while len(f) % 4:
+            f += b'\0'
+        struct.pack_into('>I', f, soff + 4 * idx, len(f))
+        f += text.encode('utf-16-be') + b'\0\0'
+    while len(f) % 4:
+        f += b'\0'
+    struct.pack_into('>I', f, 4, len(f))
+    return bytes(f)
+
+
+# The Nexial Binding's item texts (MSG/NA_ENGLISH/item.msgbnd): it keeps your souls in boss rush (nexial_binding).
+# The game's own texts are checked by their SHA-256 only -- nothing of the disc goes into this repository. FMG 20
+# (the one-line description) is replaced; FMG 24 (the story) keeps its first paragraph, read from your game files
+# at build time, and gets our second paragraph in place of the game's.
+NEXIAL_OLD_SHA = {20: 'e81f4cdaa1cee779828803fa108648c8107d48e5d00c4a243c3b75f1e4e562b5',
+                  24: '796e3d4dc554e02d8241674cdcdfa2252eafdbc52aaf464a732b8f192c05c225'}
+NEXIAL_LINE = 'Return to the Nexus, keeping all Souls'
+NEXIAL_STORY_END = 'In a boss rush it takes you back to the Nexus\nwith every Soul you carry.'
+
+
+def nexial_texts(old):
+    """{fmg id: new text} from the game's own {fmg id: text}."""
+    return {20: NEXIAL_LINE, 24: old[24].split('\n\n')[0] + '\n\n' + NEXIAL_STORY_END}
+
+
+def item_msg(raw_plain):
+    """Item texts: the Nexial Binding's (goods 1033) description (FMG 20) and story (FMG 24) say it keeps souls."""
+    bnd = sf.Bnd3(raw_plain)
+    old = {fid: fmg_strings(bnd_entry(bnd, eid=fid)['data']) for fid in NEXIAL_OLD_SHA}
+    for fid, sha in NEXIAL_OLD_SHA.items():
+        assert old[fid].get(1033) and hashlib.sha256(old[fid][1033].encode('utf-8')).hexdigest() == sha, \
+            ('not the tested item texts (NA English)', fid)
+    for fid, text in nexial_texts({k: v[1033] for k, v in old.items()}).items():
+        e = bnd_entry(bnd, eid=fid)
+        e['data'] = fmg_replace(e['data'], {1033: text})
+        new = fmg_strings(e['data'])
+        assert new[1033] == text and all(new[k] == v for k, v in old[fid].items() if k != 1033)
+    return bnd.write()
 
 
 def menu_msg(raw_plain):
@@ -436,6 +552,13 @@ def build(dst):
     if os.path.isfile(os.path.join(GAME, mrel)):
         put(dst, mrel, new)
     print('  texts: %d added' % len(TEXTS))
+    irel = os.path.join(USR, 'MSG', 'NA_ENGLISH', 'item.msgbnd')
+    plain, info = sf.dcx_decompress(rd(os.path.join(GAME, irel + '.dcx')))
+    new = item_msg(plain)
+    put(dst, irel + '.dcx', sf.dcx_compress(new, info))
+    if os.path.isfile(os.path.join(GAME, irel)):
+        put(dst, irel, new)
+    print("  item texts: the Nexial Binding's description says it keeps your souls")
     prel = os.path.join(USR, 'PARAM', 'GAMEPARAM', 'gameparamna.parambnd')
     plain, info = sf.dcx_decompress(rd(os.path.join(GAME, prel + '.dcx')))
     new = shops(plain)

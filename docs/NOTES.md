@@ -2321,10 +2321,20 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       lost): 0 there, and its yes/no box (goods +0x3C) is Evacuate's "Return to the Nexus?" (10010710) instead of
       "Forfeit all Souls and return?" (10010712).
     - Boldwin also sells every armour piece (72: helms 1xxxxx, armour 2xxxxx, gauntlets 3xxxxx, leggings 4xxxxx,
-      minus No Equipment, the black phantoms' sets x9xxxx and the Old Monk's wrappings 180000; 1000 souls each) and
-      every named ring (100-121, 123-126; 1500 each): ShopLineupParam +1 = 1 armour / 2 ring, rows copied from a
+      minus No Equipment, the black phantoms' sets x9xxxx and the Old Monk's wrappings 180000) and every named
+      ring (100-121, 123-126): ShopLineupParam +1 = 1 armour / 2 ring, rows copied from a
       weapon row with the type byte set (BOLDWIN_ARMOUR / BOLDWIN_RINGS, checked against EquipParamProtector /
       EquipParamAccessory).
+    - Prices (2026-11-11, from the main PC's rebalance; were 1,000 a weapon / armour piece, 1,500 a ring, 20 ammo):
+      WEAPON_PRICE / ARMOUR_PRICE / RING_PRICE in make_boss_rush.py. What normal shops charge where they sell it
+      (Brushwood capped), else by tier: best weapons 40,000-75,000, strong 15,000-30,000, solid 2,000-8,000; a full
+      armour set split helm 20% / body 40% / hands 20% / legs 20%, top sets 30,000-50,000; rings 5,000-30,000, the
+      Ring of Avarice 50,000; pure upgrade stones 5,000 -> 10,000. Against a run's 374,382 souls from the 16 bosses
+      at 1x, everything would cost 1,992,200. Checked: all 246 rows Boldwin sells match the tables. Sell-back
+      (the item params' own value) not tried in game yet.
+    - The Nexial Binding's texts (item.msgbnd FMG 20 description, FMG 24 story; fmg_replace) say the souls are
+      kept, in our own words. The game's texts are checked by SHA-256 only and the story keeps its first
+      paragraph from the player's own files: nothing from the disc in the repository.
     - Souls multiplier: the launcher's *Boss rush souls* (1x 2x 3x 5x 10x, launcher.ini boss_rush_souls) sets
       DES_BR_SOULS; make_boss_rush.py multiplies NpcParam +0x3C (an enemy's souls) and GameAreaParam +0 / +4 (a
       boss's) by it (capped at 99,999,999), and puts "souls xN" in game_bossrush's stamp, so a change rebuilds it.
