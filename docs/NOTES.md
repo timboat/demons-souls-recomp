@@ -2811,6 +2811,46 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       73.6, render CPU 9.0 -> 8.4 ms/frame; 1-1 at 60 fps 21 -> 7 dropped refreshes over 3 runs (with the
       every-2-ms sampler on, see above). Not shipped: the
       profile (44 MB) is built from the disc's code, so it stays off the repo for now.
+133. **Guest clock locked to the display by the swap chain's own vblank times, not WaitForVBlank (2026-11-10, 5800X + RTX 3070, 60 Hz TV):**
+    - User: "choppy", the whole picture "as if we're delivering frames at the wrong time" (a reviewer's video says the
+      same about frame pacing). In the recordings every frame was up exactly one refresh, one game step per present,
+      steps evenly timed, player motion per step even (DES_WHERE=0.001: 61 mm every step walking), and F8 marks fell
+      in perfect stretches -- nothing the game logs showed it.
+    - PresentMon 2.6.0 (Intel, signed; destest/tools/presentmon, run as admin, destest/pmrep.py): Hardware
+      Composed: Independent Flip, display changes 16.67 ms (p1 16.62, p99 16.71), but the present-to-display latency
+      stepped 16 -> 24 -> 33 -> 41 -> 49 ms in 8.3 ms (one 120 Hz guest tick) jumps, 16 in 2.5 min: game time sliding
+      against screen time, and up to 3 frames queued.
+    - Cause: fix 53's lock fits the display's vblank grid from a thread woken by IDXGIOutput::WaitForVBlank. The wake
+      times are late by a varying amount (and the call spins a core on Windows 11 26300): from run to run the fit
+      put the same display at 60.004-60.030 Hz, where its frame statistics say 60.001-60.004. The guest clock
+      wandered 59.89-60.00 Hz over 20 s windows (destest/lockrep.py: vblank-handler rate against steps, presents
+      and the swap-chain queue depth), the queue filled and drained, and every change of depth was a slip.
+    - Fix (libs/video/rsx_live_draw.c ldvb_from_stats; LD_VBLANK_STATS=0 = the old source): after each Present,
+      IDXGISwapChain::GetFrameStatistics -- SyncRefreshCount and SyncQPCTime, the driver's own vblank count and
+      time -- is the fit's sample (one per new refresh count; the fit and the ticker are unchanged). The
+      WaitForVBlank thread parks while those samples come, and takes over again after a second without them
+      (before the first present, minimized). A DISJOINT result, or a sample whose time does not match the
+      refreshes counted since the last (another monitor, another mode), starts a new series. Tearing presents
+      (VRR, LD_PRESENT_INTERVAL=0 with tearing) keep the WaitForVBlank source: their statistics follow the game's
+      own flips.
+    - User, same walk from the tutorial spawn with PresentMon: "felt better for sure", still a little choppy;
+      latency slips 16 in 158 s -> 8 in 191 s, queue-depth changes 26.2 -> 3.3 a minute.
+    - Test kit, 1-1 at 60 fps (player-like kit, 3 valid runs each side, destest/dropclass.py + rpf.py): fix 132
+      14 / 2 dropped frames, 0.48 / 0.06% frames not one refresh; fix 133 3 / 2 / 1, 0.19 / 0.04 / 0.07%. Latria 4-2
+      uncapped 74.1 / 76.8 -> 76.4 / 77.2 fps (the lock holds 8 ticks per refresh there too). Tour: every stop
+      59.8-60 mean, one 51 ms step at 3,1,997, no aborts.
+    - Review (3 lenses + a refuter each): series not reset on a monitor or mode change, and VRR -- both fixed above;
+      the rest refuted.
+    - Tried and left out: a queue drain (hold the clock back a frame when 2+ frames stay queued for a second). With
+      its threshold right it never fired in the user's walk, so it is unproven; the first version, off by one
+      (the depth read right after a Present counts that frame too), fired constantly and cost 17 drops a run.
+    - Ruled out on the way: the perf recorder's once-a-second thread table (fix 58; CreateToolhelp32Snapshot maps
+      a view per Thread32Next -- 9 freezes in 6 runs with it off, as with it on); a main-thread / render-thread
+      race (frames whose picture jumped had the same flip-to-step timing as the rest); the 30 fps mode felt worse.
+      LD_PRESENT_PACE cannot be changed from the launcher's Extra settings: PLAY.bat sets 0.85 after them.
+    - Still open: the user still sees some choppiness in perfect stretches. Next suspect is the camera's own motion
+      (a capture of the vertex constants, LD_VPC_DUMP in a test build, found the shadow camera updating in 30 Hz
+      pairs; the view camera is not identified yet).
 106. **patches/lifted-code.patch would not apply to a freshly recompiled game (2026-11-09):**
     - Measured: a full relift of the game + main's patch stopped at SETUP step 5 ("patch does not apply") on nine files
       (ppu_recomp_010, 023, 033, 045, 052, 064, 073, 084, 126). The patch's sections for those files, regenerated for

@@ -10251,7 +10251,7 @@ index de06362..66a3f7e 100644
  
  _Static_assert(sizeof(rsx_host_control) <= RSX_HOST_CONTROL_BYTES, "control page");
 diff --git a/libs/video/rsx_live_draw.c b/libs/video/rsx_live_draw.c
-index 2579117..5fa4e00 100644
+index 2579117..d9479a4 100644
 --- a/libs/video/rsx_live_draw.c
 +++ b/libs/video/rsx_live_draw.c
 @@ -55,7 +55,9 @@ void rsx_live_draw_present_rgba(const uint8_t* r, u32 w, u32 h) { (void)r; (void
@@ -14170,16 +14170,16 @@ index 2579117..5fa4e00 100644
      g_ld_profile.total.pso_lookups++;
  #endif
 -    for (u32 i = 0; i < g.n_psos; i++) {
--#if defined(YZ_PERF_PROFILE)
--        g_ld_profile.total.pso_probes++;
--#endif
--        if (g.psos[i].key == key) {
 +    { const u32 i = ld_pso_find(key);   /* fix 115: hashed index instead of a scan */
 +      if (i != UINT32_MAX) {
  #if defined(YZ_PERF_PROFILE)
--            g_ld_profile.total.pso_hits++;
+-        g_ld_profile.total.pso_probes++;
 +          g_ld_profile.total.pso_hits++;
  #endif
+-        if (g.psos[i].key == key) {
+-#if defined(YZ_PERF_PROFILE)
+-            g_ld_profile.total.pso_hits++;
+-#endif
 -            return g.psos[i].pso;
 -        }
 -    }
@@ -15658,7 +15658,7 @@ index 2579117..5fa4e00 100644
      description.pParameters = parameters;
      ID3DBlob* serialized = NULL;
      ID3DBlob* signature_errors = NULL;
-@@ -8217,7 +11803,143 @@ static int make_depth_snapshot_pipeline(void)
+@@ -8217,7 +11803,218 @@ static int make_depth_snapshot_pipeline(void)
          g.dev, &pipeline, &IID_ID3D12PipelineState,
          (void**)&g.depth_snapshot_pso);
      shader->lpVtbl->Release(shader);
@@ -15705,13 +15705,23 @@ index 2579117..5fa4e00 100644
 + * refreshes for a second or two instead of an even 2 / 2 -- short judder bursts with every frame on
 + * time. This thread waits for the window's real vblanks (IDXGIOutput::WaitForVBlank) and keeps a
 + * least-squares fit of their times (period + phase) over the last 256; the ticker places its ticks
-+ * on that grid when its own rate is a whole multiple of the display's. LD_VBLANK_LOCK=0 = off. */
++ * on that grid when its own rate is a whole multiple of the display's. LD_VBLANK_LOCK=0 = off.
++ * Demon's Souls NOTES fix 133: the samples now come from the swap chain's frame statistics when it
++ * has them (SyncRefreshCount + SyncQPCTime: the driver's own vblank count and time, read after each
++ * Present). WaitForVBlank wake-ups are late by a varying amount and, on Windows 11 26300, the call
++ * spins: from run to run the fit put the same display at 60.004-60.030 Hz (its frame statistics:
++ * 60.001-60.004), the guest clock wandered 59.89-60.00 Hz over 20 s windows, frames queued up to 3
++ * deep and every change of depth was an 8.3 ms slip between game time and screen time. The thread only waits for vblanks while the statistics are missing
++ * (before the first present, or after a mode change). LD_VBLANK_STATS=0 = the old WaitForVBlank source. */
 +#define LDVB_N 256
 +static struct {
-+    SRWLOCK lock;
++    SRWLOCK lock;                                          /* the fitted grid (readers: the ticker) */
++    SRWLOCK wlock;                                         /* the samples: one writer at a time */
 +    double t[LDVB_N]; long long k[LDVB_N]; int n, head;   /* samples: QPC us, refresh index */
 +    double base_us, period_us; int valid;                  /* fitted grid: a vblank at base, every period */
 +    long long idx; double last_t;
++    int since_fit;                                         /* samples since the last fit */
++    volatile LONG from_stats;                              /* 1: samples come from frame statistics */
 +} g_ldvb;
 +
 +static double ldvb_now_us(void)
@@ -15747,12 +15757,27 @@ index 2579117..5fa4e00 100644
 +    }
 +}
 +
++/* One vblank sample (time, refresh index); the caller holds wlock. */
++static void ldvb_add(double t, long long k)
++{
++    g_ldvb.idx = k; g_ldvb.last_t = t;
++    g_ldvb.t[g_ldvb.head] = t; g_ldvb.k[g_ldvb.head] = k;
++    g_ldvb.head = (g_ldvb.head + 1) % LDVB_N;
++    if (g_ldvb.n < LDVB_N) g_ldvb.n++;
++    if (g_ldvb.period_us <= 0 && g_ldvb.n >= 8) {   /* first estimate before the fit has samples */
++        const int j0 = (g_ldvb.head - g_ldvb.n + LDVB_N) % LDVB_N;
++        if (k > g_ldvb.k[j0]) g_ldvb.period_us = (t - g_ldvb.t[j0]) / (double)(k - g_ldvb.k[j0]);
++    }
++    if (g_ldvb.n >= 32 && ++g_ldvb.since_fit >= 16) { g_ldvb.since_fit = 0; ldvb_fit(); }
++}
++
 +static DWORD WINAPI ldvb_thread(LPVOID unused)
 +{
 +    (void)unused;
 +    IDXGIOutput* out = NULL;
 +    double next_query = 0;
 +    for (;;) {
++        if (g_ldvb.from_stats) { Sleep(50); continue; }   /* fix 133: the present path feeds the fit */
 +        const double now = ldvb_now_us();
 +        if (!out || now >= next_query) {           /* the window may move to another monitor */
 +            if (out) { out->lpVtbl->Release(out); out = NULL; }
@@ -15761,22 +15786,71 @@ index 2579117..5fa4e00 100644
 +        }
 +        if (FAILED(out->lpVtbl->WaitForVBlank(out))) { out->lpVtbl->Release(out); out = NULL; Sleep(10); continue; }
 +        const double t = ldvb_now_us();
-+        if (g_ldvb.n && g_ldvb.period_us > 0) {     /* whole refreshes since the last sample (missed waits) */
-+            long long steps = (long long)floor((t - g_ldvb.last_t) / g_ldvb.period_us + 0.5);
-+            if (steps < 1) steps = 1;
-+            if (steps > 100000) { g_ldvb.n = 0; steps = 1; }   /* long stall / monitor change: start over */
-+            g_ldvb.idx += steps;
-+        } else g_ldvb.idx++;
-+        g_ldvb.last_t = t;
-+        g_ldvb.t[g_ldvb.head] = t; g_ldvb.k[g_ldvb.head] = g_ldvb.idx;
-+        g_ldvb.head = (g_ldvb.head + 1) % LDVB_N;
-+        if (g_ldvb.n < LDVB_N) g_ldvb.n++;
-+        if (g_ldvb.period_us <= 0 && g_ldvb.n >= 8) {   /* first estimate before the fit has samples */
-+            const int j0 = (g_ldvb.head - g_ldvb.n + LDVB_N) % LDVB_N;
-+            g_ldvb.period_us = (t - g_ldvb.t[j0]) / (double)(g_ldvb.idx - g_ldvb.k[j0]);
++        AcquireSRWLockExclusive(&g_ldvb.wlock);
++        if (!g_ldvb.from_stats) {
++            long long k = g_ldvb.idx + 1;
++            if (g_ldvb.n && g_ldvb.period_us > 0) {     /* whole refreshes since the last sample (missed waits) */
++                long long steps = (long long)floor((t - g_ldvb.last_t) / g_ldvb.period_us + 0.5);
++                if (steps < 1) steps = 1;
++                if (steps > 100000) { g_ldvb.n = 0; steps = 1; }   /* long stall / monitor change: start over */
++                k = g_ldvb.idx + steps;
++            }
++            ldvb_add(t, k);
 +        }
-+        if (g_ldvb.n >= 32 && (g_ldvb.idx % 16) == 0) ldvb_fit();
++        ReleaseSRWLockExclusive(&g_ldvb.wlock);
 +    }
++}
++
++/* fix 133: after a Present, the swap chain's frame statistics -- the driver's count and QPC time of
++ * the vblank that last showed a frame -- as the fit's sample (one per new refresh count). They switch
++ * the source over (the WaitForVBlank thread parks); a second without them hands it back. */
++static void ldvb_from_stats(void)
++{
++    static int on = -1; static UINT last_sync; static double good_us; static int said;
++    if (on < 0) { const char* e = getenv("LD_VBLANK_STATS"); const char* l = getenv("LD_VBLANK_LOCK");
++                  on = !(e && e[0] == '0') && !(l && l[0] == '0'); }
++    if (!on || !g.swap) return;
++    static LARGE_INTEGER f;
++    if (!f.QuadPart) QueryPerformanceFrequency(&f);
++    DXGI_FRAME_STATISTICS fs; memset(&fs, 0, sizeof fs);
++    const double now = ldvb_now_us();
++    const HRESULT hr = g.swap->lpVtbl->GetFrameStatistics(g.swap, &fs);
++    if (hr == DXGI_ERROR_FRAME_STATISTICS_DISJOINT) {   /* output or mode changed: a new series */
++        AcquireSRWLockExclusive(&g_ldvb.wlock);
++        if (g_ldvb.from_stats) { g_ldvb.n = 0; g_ldvb.since_fit = 0; }
++        ReleaseSRWLockExclusive(&g_ldvb.wlock);
++        last_sync = 0;
++    }
++    if (FAILED(hr) || !fs.SyncQPCTime.QuadPart || !fs.SyncRefreshCount) {
++        if (g_ldvb.from_stats && now - good_us > 1e6) {      /* gone for a second: back to WaitForVBlank */
++            AcquireSRWLockExclusive(&g_ldvb.wlock);
++            g_ldvb.n = 0; g_ldvb.since_fit = 0; last_sync = 0;
++            InterlockedExchange(&g_ldvb.from_stats, 0);
++            ReleaseSRWLockExclusive(&g_ldvb.wlock);
++            fprintf(stderr, "[vblank-lock] frame statistics stopped: back to WaitForVBlank\n");
++            said = 0;
++        }
++        return;
++    }
++    good_us = now;
++    if (fs.SyncRefreshCount == last_sync) return;
++    const double t = (double)fs.SyncQPCTime.QuadPart * 1e6 / (double)f.QuadPart;
++    AcquireSRWLockExclusive(&g_ldvb.wlock);
++    if (!g_ldvb.from_stats || (long long)fs.SyncRefreshCount <= g_ldvb.idx ||
++        (long long)fs.SyncRefreshCount - g_ldvb.idx > 100000) {   /* switch-over, or a counter jump: new series */
++        g_ldvb.n = 0; g_ldvb.since_fit = 0;
++        InterlockedExchange(&g_ldvb.from_stats, 1);
++    } else if (g_ldvb.n && g_ldvb.period_us > 0) {
++        /* the time since the last sample has to match the refreshes counted: if not, another monitor's
++         * or another mode's counter took over without a DISJOINT -- do not fit the two together */
++        const double want = (double)((long long)fs.SyncRefreshCount - g_ldvb.idx) * g_ldvb.period_us;
++        if (fabs(t - g_ldvb.last_t - want) > 0.25 * g_ldvb.period_us) { g_ldvb.n = 0; g_ldvb.since_fit = 0; }
++    }
++    ldvb_add(t, (long long)fs.SyncRefreshCount);
++    ReleaseSRWLockExclusive(&g_ldvb.wlock);
++    last_sync = fs.SyncRefreshCount;
++    if (!said) { said = 1; fprintf(stderr, "[vblank-lock] vblank times from the swap chain's frame statistics "
++                                           "(LD_VBLANK_STATS=0 = WaitForVBlank)\n"); }
 +}
 +
 +/* The fitted display grid: a recent vblank time (QPC us) and the refresh period. 0 until locked. */
@@ -15797,13 +15871,14 @@ index 2579117..5fa4e00 100644
 +    const char* e = getenv("LD_VBLANK_LOCK");
 +    if (e && e[0] == '0') return;
 +    InitializeSRWLock(&g_ldvb.lock);
++    InitializeSRWLock(&g_ldvb.wlock);
 +    HANDLE th = CreateThread(NULL, 0, ldvb_thread, NULL, 0, NULL);
 +    if (th) { SetThreadPriority(th, THREAD_PRIORITY_TIME_CRITICAL); CloseHandle(th); }
 +    fprintf(stderr, "[vblank-lock] display vblank source %s\n", th ? "started" : "FAILED");
  }
  
  int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
-@@ -8351,6 +12073,10 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8351,6 +12148,10 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
              (void**)&g_ld_profile.adapter);
      }
  #endif
@@ -15814,7 +15889,7 @@ index 2579117..5fa4e00 100644
      ld_open_info_queue();
      D3D12_COMMAND_QUEUE_DESC qd = {0};
      g.dev->lpVtbl->CreateCommandQueue(g.dev, &qd, &IID_ID3D12CommandQueue, (void**)&g.queue);
-@@ -8367,7 +12093,24 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8367,7 +12168,24 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
      DXGI_SWAP_CHAIN_DESC1 scd = {0};
      scd.Width = width; scd.Height = height; scd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
      scd.SampleDesc.Count = 1; scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -15840,7 +15915,7 @@ index 2579117..5fa4e00 100644
      IDXGISwapChain1* sc1 = NULL;
      if (FAILED(factory->lpVtbl->CreateSwapChainForHwnd(factory, (IUnknown*)g.queue,
              (HWND)hwnd, &scd, NULL, NULL, &sc1))) {
-@@ -8375,15 +12118,28 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8375,15 +12193,28 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
      }
      sc1->lpVtbl->QueryInterface(sc1, &IID_IDXGISwapChain3, (void**)&g.swap);
      sc1->lpVtbl->Release(sc1);
@@ -15871,7 +15946,7 @@ index 2579117..5fa4e00 100644
          g.swap->lpVtbl->GetBuffer(g.swap, i, &IID_ID3D12Resource, (void**)&g.backbuf[i]);
          g.dev->lpVtbl->CreateRenderTargetView(g.dev, g.backbuf[i], NULL, rtv_handle(i));
      }
-@@ -8428,7 +12184,8 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8428,7 +12259,8 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
      hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
      hd.NumDescriptors = SRV_CPU_HEAP_SLOTS; hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
      g.dev->lpVtbl->CreateDescriptorHeap(g.dev, &hd, &IID_ID3D12DescriptorHeap, (void**)&g.srv_cpu_heap);
@@ -15881,7 +15956,7 @@ index 2579117..5fa4e00 100644
      hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
      g.dev->lpVtbl->CreateDescriptorHeap(g.dev, &hd, &IID_ID3D12DescriptorHeap, (void**)&g.srv_heap);
      g.srv_step = g.dev->lpVtbl->GetDescriptorHandleIncrementSize(g.dev, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-@@ -8452,6 +12209,13 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8452,6 +12284,13 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
                  (void*)g.smp_cpu_heap, (void*)g.smp_heap);
          return -1;
      }
@@ -15895,7 +15970,7 @@ index 2579117..5fa4e00 100644
      {
          D3D12_SAMPLER_DESC def = {0};
          def.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-@@ -8471,7 +12235,7 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8471,7 +12310,7 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
          D3D12_HEAP_PROPERTIES dhp = {0}; dhp.Type = D3D12_HEAP_TYPE_DEFAULT;
          D3D12_RESOURCE_DESC drd = {0};
          drd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -15904,7 +15979,7 @@ index 2579117..5fa4e00 100644
          drd.MipLevels = 1; drd.Format = DXGI_FORMAT_D32_FLOAT_S8X24_UINT; drd.SampleDesc.Count = 1;
          drd.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
          D3D12_CLEAR_VALUE dcv = {0}; dcv.Format = drd.Format; dcv.DepthStencil.Depth = 1.0f;
-@@ -8504,7 +12268,18 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
+@@ -8504,7 +12343,18 @@ int rsx_live_draw_init(void* hwnd, u32 width, u32 height,
      sink.draw_index_array = sink_draw_index;
      sink.flip = sink_flip;
      rsx_dispatch_init(&g.rsx, &sink);
@@ -15923,7 +15998,7 @@ index 2579117..5fa4e00 100644
      g.ready = 1;
      g.enabled = 1;
      return 0;
-@@ -8540,6 +12315,7 @@ void rsx_live_draw_set_display_buffer(
+@@ -8540,6 +12390,7 @@ void rsx_live_draw_set_display_buffer(
              buffer_id, location, offset, pitch, width, height);
  }
  
@@ -15931,7 +16006,7 @@ index 2579117..5fa4e00 100644
  void rsx_live_draw_method(u32 method, u32 arg)
  {
      /* Bounded ingress trace for the a010 live-vs-capture comparison.  Keep the
-@@ -8547,10 +12323,10 @@ void rsx_live_draw_method(u32 method, u32 arg)
+@@ -8547,10 +12398,10 @@ void rsx_live_draw_method(u32 method, u32 arg)
       * command list binds NV4097 on a different subchannel, feeding the raw
       * 0x2xxx-shifted method into the canonical dispatcher silently stores the
       * state in the wrong register bank. */
@@ -15945,7 +16020,7 @@ index 2579117..5fa4e00 100644
      if (state_trace && state_trace_lines < 512) {
          const u32 canonical = method & 0x1FFCu;
          const int vertex_texture =
-@@ -8590,7 +12366,7 @@ void rsx_live_draw_method(u32 method, u32 arg)
+@@ -8590,7 +12441,7 @@ void rsx_live_draw_method(u32 method, u32 arg)
                          return;
                      }
                  }
@@ -15954,7 +16029,7 @@ index 2579117..5fa4e00 100644
                  ReleaseSRWLockExclusive(&g_ld_access_lock);
                  return;
              }
-@@ -8598,7 +12374,7 @@ void rsx_live_draw_method(u32 method, u32 arg)
+@@ -8598,7 +12449,7 @@ void rsx_live_draw_method(u32 method, u32 arg)
              MemoryBarrier();
              if (!g_ld_movie_mode && !g_ld_host_waiting) {
                  if (g.ready)
@@ -15963,7 +16038,7 @@ index 2579117..5fa4e00 100644
                  InterlockedDecrement(&g_ld_guest_active);
                  return;
              }
-@@ -8612,7 +12388,32 @@ void rsx_live_draw_method(u32 method, u32 arg)
+@@ -8612,7 +12463,32 @@ void rsx_live_draw_method(u32 method, u32 arg)
              g_ld_movie_track_rsx = getenv("RSX_MOVIE_TRACK") ? 1 : 0;
          if (!g_ld_movie_track_rsx) return;
      }
@@ -15997,7 +16072,7 @@ index 2579117..5fa4e00 100644
  }
  
  void rsx_live_draw_set_movie_mode(int on)
-@@ -8738,6 +12539,9 @@ static u32 g_ld_last_frame_draws = 0;
+@@ -8738,6 +12614,9 @@ static u32 g_ld_last_frame_draws = 0;
   * "presenting fresh content" from "flipping a static image" -- the dead
   * journal-consumer limp state renders ~0 draws/frame while flips tick). */
  u32 rsx_live_draw_get_last_draws(void) { return g_ld_last_frame_draws; }
@@ -16007,7 +16082,7 @@ index 2579117..5fa4e00 100644
  
  double rsx_live_draw_get_present_fps(void)
  {
-@@ -8929,12 +12733,137 @@ static void ld_dump_texel_rgb(const u8* p, int fp16, u8* out)
+@@ -8929,12 +12808,137 @@ static void ld_dump_texel_rgb(const u8* p, int fp16, u8* out)
   * through here while recording). */
  static FILE* g_ld_record_to;
  
@@ -16147,7 +16222,7 @@ index 2579117..5fa4e00 100644
      if (!width || !height) return UINT64_MAX;
      const int fp16 = surface->fmt == DXGI_FORMAT_R16G16B16A16_FLOAT;
      const u32 texel = fp16 ? 8u : 4u;
-@@ -9025,6 +12954,183 @@ static u64 ld_dump_surface_ppm(const char* path, const surface_t* surface)
+@@ -9025,6 +13029,183 @@ static u64 ld_dump_surface_ppm(const char* path, const surface_t* surface)
      return nonblack;
  }
  
@@ -16331,7 +16406,7 @@ index 2579117..5fa4e00 100644
  #if !defined(YZ_PERF_CLEAN)
  static void ld_parity_capture_surface(
      const char* directory, const char* phase, u32 serial,
-@@ -9199,6 +13305,77 @@ static void ld_vertex_diag_emit(const char* reason, int dump_surface)
+@@ -9199,6 +13380,77 @@ static void ld_vertex_diag_emit(const char* reason, int dump_surface)
      fflush(stderr);
  }
  
@@ -16409,7 +16484,7 @@ index 2579117..5fa4e00 100644
  void rsx_live_draw_present(u32 buffer_id)
  {
      if (!g.ready) return;
-@@ -9300,9 +13477,9 @@ void rsx_live_draw_present(u32 buffer_id)
+@@ -9300,9 +13552,9 @@ void rsx_live_draw_present(u32 buffer_id)
          char path[MAX_PATH * 2];
          snprintf(path, sizeof(path), "%s\\frame_%06u.ppm", dump_dir, dump_n - 1u);
          const u64 nb = ld_dump_surface_ppm(path, &g.surfaces[target]);
@@ -16421,7 +16496,7 @@ index 2579117..5fa4e00 100644
          fflush(stderr);
      }
      /* LD_RECORD=<out.mp4> (boot_main's --record): every presented frame, as
-@@ -9332,6 +13509,7 @@ void rsx_live_draw_present(u32 buffer_id)
+@@ -9332,6 +13584,7 @@ void rsx_live_draw_present(u32 buffer_id)
            g_ld_record_to = NULL;
            fflush(rec);
        } }
@@ -16429,7 +16504,7 @@ index 2579117..5fa4e00 100644
      const u32 current = current_surface();
      surface_t* presented_surface = &g.surfaces[target];
      /* LD_PRESENT_DBG=1: is this surface actually finished? A surface whose last
-@@ -9399,10 +13577,90 @@ void rsx_live_draw_present(u32 buffer_id)
+@@ -9399,10 +13652,90 @@ void rsx_live_draw_present(u32 buffer_id)
            ld_trace_target("present", target, buffer_id);
            last_present_target = target;
        } }
@@ -16520,7 +16595,7 @@ index 2579117..5fa4e00 100644
      D3D12_RESOURCE_BARRIER bar[2] = {0};
      bar[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
      bar[0].Transition.pResource = srcimg;
-@@ -9423,10 +13681,109 @@ void rsx_live_draw_present(u32 buffer_id)
+@@ -9423,10 +13756,112 @@ void rsx_live_draw_present(u32 buffer_id)
      bar[1].Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
      bar[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
      g.list->lpVtbl->ResourceBarrier(g.list, 2, bar);
@@ -16598,6 +16673,9 @@ index 2579117..5fa4e00 100644
 +        const HRESULT present_hr = g.swap->lpVtbl->Present(g.swap, (UINT)pi,
 +                                                           pi == 0 && g_ld_tearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
 +        const unsigned long long present_t1 = ps3_qpc_us();
++        /* fix 133: exact vblank samples for the guest clock lock -- not for tearing (VRR) presents, whose
++         * statistics follow the game's own flips; those keep the WaitForVBlank source as before */
++        if (SUCCEEDED(present_hr) && !(pi == 0 && g_ld_tearing)) ldvb_from_stats();
 +        /* Present-first (LD_PIPELINE=1): now wait for the frame, as the old
 +         * present did before handing it over, and store the write-back. */
 +        if (ld_pipe_mode() == 1) { ld_pipe_wait(split_fence ? split_fence : present_fence); ld_rt_writeback_commit(); }
@@ -16632,7 +16710,7 @@ index 2579117..5fa4e00 100644
          if (SUCCEEDED(present_hr))
              ld_present_measure_record(g_ld_frames + 1u);
          else {
-@@ -9475,6 +13832,18 @@ void rsx_live_draw_present(u32 buffer_id)
+@@ -9475,6 +13910,18 @@ void rsx_live_draw_present(u32 buffer_id)
        g_ld_last_frame_draws = (u32)(g_ld_stats.packets_seen - packets_at_last_frame);
        packets_at_last_frame = g_ld_stats.packets_seen; }
      g_ld_frames++;
@@ -16651,7 +16729,7 @@ index 2579117..5fa4e00 100644
  #if defined(YZ_PERF_PROFILE)
      ld_profile_present(g_ld_frames);
  #endif
-@@ -10498,10 +14867,17 @@ void rsx_live_draw_shutdown(void)
+@@ -10498,10 +14945,17 @@ void rsx_live_draw_shutdown(void)
                  (unsigned long long)g_ld_shader_disk_writes[1],
                  (unsigned long long)g_ld_shader_disk_rejects);
      }
@@ -16669,7 +16747,7 @@ index 2579117..5fa4e00 100644
      for (u32 i = 0; i < g.n_vtex; i++) if (g.vtex[i].tex) g.vtex[i].tex->lpVtbl->Release(g.vtex[i].tex);
      for (u32 i = 0; i < g.n_surfaces; i++) if (g.surfaces[i].tex) g.surfaces[i].tex->lpVtbl->Release(g.surfaces[i].tex);
      for (u32 i = 0; i < g.n_zdepths; i++) {
-@@ -10510,6 +14886,8 @@ void rsx_live_draw_shutdown(void)
+@@ -10510,6 +14964,8 @@ void rsx_live_draw_shutdown(void)
          if (g.zdepths[i].snapshot)
              g.zdepths[i].snapshot->lpVtbl->Release(
                  g.zdepths[i].snapshot);
@@ -16678,7 +16756,7 @@ index 2579117..5fa4e00 100644
      }
      if (g.movie_upload) g.movie_upload->lpVtbl->Release(g.movie_upload);
      if (g.movie_overlay_readback) g.movie_overlay_readback->lpVtbl->Release(g.movie_overlay_readback);
-@@ -10520,6 +14898,8 @@ void rsx_live_draw_shutdown(void)
+@@ -10520,6 +14976,8 @@ void rsx_live_draw_shutdown(void)
      if (g.ps_cb) g.ps_cb->lpVtbl->Release(g.ps_cb);
      if (g.depth_snapshot_pso)
          g.depth_snapshot_pso->lpVtbl->Release(g.depth_snapshot_pso);
@@ -16687,7 +16765,7 @@ index 2579117..5fa4e00 100644
      for (u32 i = 0; i < 4; i++)
          if (g.downsample_pso[i]) g.downsample_pso[i]->lpVtbl->Release(g.downsample_pso[i]);
      if (g.downsample_rootsig)
-@@ -10541,6 +14921,7 @@ void rsx_live_draw_shutdown(void)
+@@ -10541,6 +14999,7 @@ void rsx_live_draw_shutdown(void)
  #endif
      if (g.dev) g.dev->lpVtbl->Release(g.dev);
      memset(&g, 0, sizeof(g));
