@@ -58,6 +58,11 @@ export PS3_TITLE="Demon's Souls (ps3recomp)"
 LOGS=${DES_LOG_DIR:-$D/logs}
 # (a test run moves these, and PS3_GAMEDATA_ROOT for the saves, into its own folder)
 export PS3_HDD0_ROOT="${PS3_HDD0_ROOT:-$D/hdd0}" PS3_HDD1_ROOT="${PS3_HDD1_ROOT:-$D/hdd1}" PS3_DEV_FLASH="${PS3_DEV_FLASH:-$D/no_flash}"
+# The game copies files it has read from the disc into its HDD1 cache and trusts them on the next run. That
+# cache goes before every run, as in PLAY.bat / linux/play.sh: a killed run leaves truncated files there, and
+# a copy from another version of the game's files (boss rush, the Remaster mod, an update that changed shops
+# or texts) would be used instead of the files themselves.
+rm -rf "${PS3_HDD1_ROOT:?}/cache"
 mkdir -p "$PS3_HDD0_ROOT" "$PS3_HDD1_ROOT" "$PS3_DEV_FLASH" "$LOGS"
 export GCM_NO_TITLE_RECYCLE=1 PS3_NP_STRICT_OFFLINE=1 SPU_INTERP_UNLIFTED=1 SPURS_JC_EVENTS=0
 export PS3_INPUT_MAP="${PS3_INPUT_MAP:-$D/mac/input.toml}"

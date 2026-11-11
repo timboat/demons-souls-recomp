@@ -3216,7 +3216,7 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - RSX_ENGINE_VCACHE=0 turns it off; RSX_ENGINE_VCACHE_STATS=1 logs the counters every 300 frames.
     - Left: `gpu wait (flush)` ~5 ms a frame and frame pacing. spu_async still spends much of its busy time in mach_absolute_time and
       _tlv_get_addr (SPU runtime, not changed here).
-137. **Boss rush on macOS (2026-11-09, MacBook M2 Pro; local branch `boss-rush-mac`, not for the public repo yet):**
+137. **Boss rush on macOS (2026-11-09, MacBook M2 Pro):**
     - The private `boss-rush` branch (fix 100) was 26 commits behind main, and git could not merge the two patch
       files as text (145 conflicts in ps3recomp-local.patch, 2 in lifted-code.patch, most of them line endings).
       Merged at source level instead: for rsx_live_draw.c and the five lifted files boss rush changes
@@ -3247,6 +3247,19 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       (a temporary capture of the present's target, removed again) shows "0:00.0" and "Souls x2" at the bottom
       centre in the game's font. Not tested: a new character's start in the Nexus, the archstone "Fight <boss>?"
       prompts, a boss fight, splits and results, the pause on loading screens and cutscenes.
+140. **macOS: the HDD1 cache goes before every run -- Boldwin's shop was the old one (2026-11-11, MacBook M2 Pro):**
+     - User, in boss rush after the update that widened Boldwin's shop and rebalanced its prices: the shop's
+       items "aren't updated".
+     - game_bossrush was right: gameparamna.parambnd(.dcx) has ShopLineupParam rows 9000-9255 and the talk script
+       m01.talkesdbnd.dcx.sdat has the 9299 bound (read back with make_boss_rush.py's own readers). But the user's
+       run never opened gameparamna.parambnd.dcx or the msgbnds from /dev_bdvd: it opened /dev_hdd1/cache/..
+       files instead. The game copies what it reads from the disc into its HDD1 cache and trusts that on the
+       next run; hdd1/cache dated from 2026-11-08 and was shared by the normal game and boss rush.
+     - Cause: PLAY.bat and linux/play.sh remove hdd1/cache before every run; mac/play.sh never did.
+     - Fix: mac/play.sh removes "$PS3_HDD1_ROOT/cache" before the run.
+     - Checked (sandbox boss rush run with a copy of the user's stale hdd1): the log now has the opens of
+       item.msgbnd.dcx, menu.msgbnd.dcx and param/gameparam/gameparamna.parambnd.dcx from /dev_bdvd, which the
+       user's run lacked. Not checked: the shop's list itself on screen.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

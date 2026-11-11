@@ -224,7 +224,7 @@ static void load_settings(void) {
     Settings* s = &g_set;
     s->fps = ini_int(@"fps", FPS_60) == FPS_30 ? FPS_30 : FPS_60;
     s->game = MAX(0, MIN(GAME_COUNT - 1, ini_int(@"game", 0)));
-    s->br_souls = MAX(1, MIN(100, ini_int(@"boss_rush_souls", 1)));
+    s->br_souls = MAX(1, MIN(100, ini_int(@"boss_rush_souls", 2)));   // 2x unless chosen, as the Windows launcher
     s->movies = ini_int(@"movies", 1) != 0;
     s->god = ini_int(@"god_mode", 0) != 0;
     s->skip_intro = ini_int(@"skip_intro", 0) != 0;

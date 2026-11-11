@@ -110,7 +110,7 @@ Settings for `mac/play.sh` on its own, as environment variables:
 | `DES_SIZE=<w>x<h>` | the window's size (default 1280x720) |
 | `DES_LOG_DIR=<dir>` | where the two logs go (default `logs/`) |
 | `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
-| `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls |
+| `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls (the launcher picks 2x unless you choose) |
 | `DES_GOD=1`, `DES_SKIP_INTRO=1` | god mode from the start; straight to PRESS START |
 | `RSX_ENGINE_VCACHE=0` | turns off the decoded-vertex cache (NOTES fix 136), to rule it out |
 
