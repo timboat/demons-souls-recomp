@@ -2344,6 +2344,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       DES_BR_SOULS; make_boss_rush.py multiplies NpcParam +0x3C (an enemy's souls) and GameAreaParam +0 / +4 (a
       boss's) by it (capped at 99,999,999), and puts "souls xN" in game_bossrush's stamp, so a change rebuilds it.
       The timer shows "Souls xN" first on its second line (and in splits.txt / results.txt) when N > 1.
+      The launcher's default is 2x since 2026-11-11 (the user: "for boss rush can 2x be the default"); without the
+      launcher (PLAY.bat, linux/play.sh) it stays 1x unless DES_BR_SOULS is set.
     - The timer is drawn in the game's own font: make_boss_rush.py writes bossrush/timer_font.bin ('BRF1': 64 px
       glyphs from FONT/NA_ENGLISH/dsfont24 via kbm_icons.py's reader, luminance + alpha); ds_boss_rush.cpp lays out
       bare cream / gold text with a soft shadow, bottom centre, as a premultiplied RGBA picture for a new renderer

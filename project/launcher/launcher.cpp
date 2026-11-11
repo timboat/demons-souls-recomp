@@ -67,7 +67,7 @@ struct Settings {
     bool no_rebuild = false;  // DES_NO_REBUILD: after an update, play the build there is
     bool skip_intro = false;  // DES_SKIP_INTRO: straight to PRESS START
     bool vrr = false;         // DES_VRR: a G-Sync / FreeSync screen (vsync off may tear, 60 fps vsync off)
-    int br_souls = 1;         // DES_BR_SOULS: boss rush souls multiplier (BR_SOULS_CHOICES)
+    int br_souls = 2;         // DES_BR_SOULS: boss rush souls multiplier (BR_SOULS_CHOICES); 2x unless chosen
     wstring extra;            // NAME=value NAME=value ...
 };
 static Settings g_set;
