@@ -57,9 +57,14 @@ enum { FPS_AUTO, FPS_30, FPS_50, FPS_60, FPS_UNLIMITED, FPS_CUSTOM };
 static const wchar_t* const GAME_DIRS[] = {L"game", L"game_remaster", L"game_mod", L"game"};
 enum { GAME_BOSS_RUSH = 3, GAME_COUNT = 4 };
 
+// The internal resolutions in quarter steps (fix 108: 1.25x = 1600x900, 1.5x = 1920x1080).
+static const int RES_Q[] = {4, 5, 6, 8, 12, 16};
+static const wchar_t* const RES_ENV[] = {nullptr, L"1.25", L"1.5", L"2", L"3", L"4"};
+static int res_index(int q) { int b = 0; for (int i = 0; i < 6; i++) if (RES_Q[i] <= q) b = i; return b; }
+
 struct Settings {
     int fps = FPS_AUTO, custom = 72;
-    int res = 1;              // DES_RES_SCALE 1-4
+    int res = 0;              // RES_Q index: DES_RES_SCALE 1, 1.25, 1.5, 2, 3, 4
     bool shadow = false;      // LD_RES_SCALE_SHADOW
     int game = 0;             // GAME_DIRS
     bool fullscreen = false, movies = true, god = false, record = true, dump = false;
@@ -135,7 +140,8 @@ static void load_settings() {
     Settings& s = g_set;
     s.fps = std::clamp(ini_int(L"fps", s.fps), 0, (int)FPS_CUSTOM);
     s.custom = ini_int(L"custom_fps", s.custom);
-    s.res = std::clamp(ini_int(L"res_scale", s.res), 1, 4);
+    // res_q (quarters); older launchers wrote only res_scale (1-4)
+    s.res = res_index(ini_int(L"res_q", 4 * std::clamp(ini_int(L"res_scale", 1), 1, 4)));
     s.shadow = ini_int(L"shadow_scale", s.shadow) != 0;
     s.game = std::clamp(ini_int(L"game", s.game), 0, GAME_COUNT - 1);
     s.fullscreen = ini_int(L"fullscreen", s.fullscreen) != 0;
@@ -159,7 +165,8 @@ static void save_settings() {
     const Settings& s = g_set;
     ini_put(L"fps", s.fps);
     ini_put(L"custom_fps", s.custom);
-    ini_put(L"res_scale", s.res);
+    ini_put(L"res_q", RES_Q[s.res]);
+    ini_put(L"res_scale", RES_Q[s.res] / 4);   // older launchers: the whole part
     ini_put(L"shadow_scale", s.shadow);
     ini_put(L"game", s.game);
     ini_put(L"fullscreen", s.fullscreen);
@@ -246,10 +253,9 @@ static wstring game_env(const Settings& s) {
     static const wchar_t* const fps[] = {nullptr, L"30", L"50", L"60", L"unlimited"};
     wstring custom = std::to_wstring(s.custom);
     env(L"DES_FPS", s.fps == FPS_CUSTOM ? custom.c_str() : fps[s.fps]);
-    wstring res = std::to_wstring(s.res);
     env(L"LD_RES_SCALE", nullptr);                 // it would win over DES_RES_SCALE
-    envif(L"DES_RES_SCALE", s.res > 1, res.c_str());
-    envif(L"LD_RES_SCALE_SHADOW", s.res > 1 && s.shadow, L"1");
+    env(L"DES_RES_SCALE", RES_ENV[s.res]);
+    envif(L"LD_RES_SCALE_SHADOW", s.res > 0 && s.shadow, L"1");
     env(L"DES_GAME", s.game == GAME_BOSS_RUSH ? nullptr : GAME_DIRS[s.game]);
     envif(L"DES_BOSS_RUSH", s.game == GAME_BOSS_RUSH, L"1");
     wstring souls = std::to_wstring(s.br_souls);
@@ -520,7 +526,7 @@ static void read_controls() {
     wchar_t b[2048];
     GetWindowTextW(item(ID_CUSTOM), b, 16);
     if (s.fps == FPS_CUSTOM || _wtoi(b) > 0) s.custom = _wtoi(b);   // empty while Custom: can_play says so
-    s.res = (int)SendMessageW(item(ID_RES), CB_GETCURSEL, 0, 0) + 1;
+    s.res = std::clamp((int)SendMessageW(item(ID_RES), CB_GETCURSEL, 0, 0), 0, 5);
     s.shadow = checked(ID_SHADOW);
     for (int g = 0; g < GAME_COUNT; ++g)
         if (checked(ID_GAME0 + g)) s.game = g;
@@ -547,9 +553,9 @@ static void write_controls() {
     g_loading = true;
     SendMessageW(item(ID_FPS), CB_SETCURSEL, s.fps, 0);
     SetWindowTextW(item(ID_CUSTOM), std::to_wstring(s.custom).c_str());
-    SendMessageW(item(ID_RES), CB_SETCURSEL, s.res - 1, 0);
+    SendMessageW(item(ID_RES), CB_SETCURSEL, s.res, 0);
     check(ID_SHADOW, s.shadow);
-    EnableWindow(item(ID_SHADOW), s.res > 1);
+    EnableWindow(item(ID_SHADOW), s.res > 0);
     int game = game_present(s.game) ? s.game : 0;
     for (int g = 0; g < GAME_COUNT; ++g) {
         check(ID_GAME0 + g, g == game);
@@ -1188,8 +1194,9 @@ static void create_controls() {
     label(L"Resolution", L, y + 3, 92);
     c = add(WC_COMBOBOXW, nullptr, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, ID_RES, X, y, 240, 200,
             L"Renders the game at a multiple of its own 1280x720: much sharper, at no cost on the CPU side. "
-            L"A mid-range GPU handles 2x easily. The picture always fills the window at 16:9.");
-    for (const wchar_t* t : {L"1x  1280x720 (the original)", L"2x  2560x1440", L"3x  3840x2160 (4K)", L"4x  5120x2880"})
+            L"1.5x matches a 1080p screen; a mid-range GPU handles 2x easily. The picture always fills the window at 16:9.");
+    for (const wchar_t* t : {L"1x  1280x720 (the original)", L"1.25x  1600x900", L"1.5x  1920x1080", L"2x  2560x1440",
+                             L"3x  3840x2160 (4K)", L"4x  5120x2880"})
         SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)t);
     y += 28;
     add(WC_BUTTONW, L"Sharper shadows too", BS_AUTOCHECKBOX | WS_TABSTOP, ID_SHADOW, X, y, 240, 22,

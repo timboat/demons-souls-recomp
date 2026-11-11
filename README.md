@@ -121,7 +121,7 @@ straight away, for a shortcut. Without the launcher, set the switches before run
 |---|---|---|
 | *Frame rate* | `DES_FPS=30\|50\|60\|unlimited\|31-240` | Auto = an even rate for your screen: 60 on 60 / 120 / 240 Hz, 50 on 100 Hz, 72 on 144 Hz, 55 on 165 Hz, 75 on 75 Hz. Game speed is right at any rate. A rate that divides your refresh rate is perfectly even; others turn vsync off. |
 | *My screen has G-Sync / FreeSync* | `DES_VRR=1` | lets a variable-refresh monitor follow the frames (vsync-off frames may tear, so the monitor shows each when it is ready); Auto is then 60 at any refresh rate. Leave it off on other screens: the picture would tear. |
-| *Resolution* | `DES_RES_SCALE=2` (up to 4) | renders above 1280x720; *Sharper shadows* = `LD_RES_SCALE_SHADOW=1` |
+| *Resolution* | `DES_RES_SCALE=1.25\|1.5\|2\|3\|4` | renders above 1280x720: 1.25 = 1600x900, 1.5 = 1920x1080 (a 1080p screen), 2 = 2560x1440; *Sharper shadows* = `LD_RES_SCALE_SHADOW=1` |
 | *Game* | `DES_GAME=game_remaster` / `game_mod`, `DES_BOSS_RUSH=1` | the PC Remaster mod, your imported models (see below), or [boss rush mode](#boss-rush-mode) |
 | *Dump textures* | `LD_TEX_DUMP=1` | saves every texture drawn, for texture packs |
 | *Skip the intro* | `DES_SKIP_INTRO=1` | starts at PRESS START; story movies still play |

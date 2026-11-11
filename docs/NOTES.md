@@ -3089,6 +3089,27 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked on a separate SETUP install, sync_patches() only: mark removed and a broken patch stops with the error at
       step 5, twice in a row, without reaching the compile; the good patch then recovers on a real fresh recompile
       (patch on, mark written, sync_lifted 'current').
+108. **1600x900 and 1920x1080 internal resolutions: fractional scales 1.25x and 1.5x (2026-11-11, user request):**
+    - The launcher's Resolution list gains "1.25x 1600x900" and "1.5x 1920x1080" between 1x and 2x;
+      DES_RES_SCALE / LD_RES_SCALE take any quarter step from 1 to 4 (atof, rounded to quarters). The launcher saves
+      res_q (quarters) and still reads an older launcher.ini's res_scale (1-4); it also writes res_scale = the
+      whole part for older launchers.
+    - rsx_live_draw.c: surface_t / zdepth_t's integer sc (fix 74) became sq, the scale in quarters (4 = 1x, 6 =
+      1.5x). Every guest -> host size or coordinate goes through ld_sd(v, sq) = (v*sq + 2) / 4, used for BOTH
+      edges of a rectangle, so neighbouring copies still meet exactly: resources, swin, viewport / scissor,
+      scaled-blit rects, transfer copy boxes (clamped to the destination's own rounding), depth snapshot / argb
+      compute sizes. A transfer that downsamples (k > 1) at a fractional scale is drawn (ld_scaled_blit) instead
+      of box-filtered, since a guest pixel is no whole number of host pixels. Occlusion counts are divided by
+      (sq/4)^2. WPOS in guest pixels at a fractional scale: new rsx_fp_apply_wpos_scale (floor(pos / scale) +
+      0.5; the integer path keeps rsx_fp_apply_wpos_grid and its shader text, so 1x-4x shader keys and the disk
+      cache are unchanged); the shadow UNNORM compare's uv factor is printed as %.2f. The window title reads
+      "x1.5 = 1920x1080" (rsx_live_draw_get_res_scale_q).
+    - Checked (boss rush sandbox, Boletarian Palace, recorded at the internal size): 1x / 1.25x / 1.5x / 2x all
+      60 fps, no device errors; downscaled to 1280x720 the 1.25x and 1.5x frames differ from 1x no more than 2x
+      does (mean 1.5 / 1.5 / 1.7), HUD identical, no seam or dark line on the right / bottom edges. The new
+      ps3recomp-local.patch applies to a clean 4e8f3ca8 checkout and gives the tested files exactly (one context
+      line keeps its CR: generate sections with git diff, not through sed, which drops it).
+    - The Mac's Metal renderer has no internal resolution setting (DES_RES_SCALE is D3D12 only): unchanged.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
