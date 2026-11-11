@@ -2304,6 +2304,11 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
         Each pause is logged ("[bossrush] timer paused 3.1 s (loading screen)"). Checked (scratch sandbox, a copy
         of the rush save, scripted load + DES_WARP_AT): title 16.1 s, not in the game yet 6.0 + 8.9 s, two loading
         screens 3.1 s each left out; 88 s counted in a 130 s session.
+        Quitting to the title (2026-11-11; the user: the timer "started on the main menu", where it should be
+        hidden and stopped): vf03 runs on PRESS START only, not on the title's menus (New / Load Game), so the 60 ms
+        window ran out there and the clock counted; and the timer stayed on screen. Now the first title mark after
+        playing makes the run "not in the game" again (g_visible false: paused, the overlay cleared by hide()) until
+        the next "BRX ingame". Checked: quit to the title in a test run logs "title screen: timer hidden and paused".
     - make_boss_rush.py also: moves each boss map's archstone warp point (MSB player part) onto its fog region,
       0.5 m up, facing the fog -- landing at the archstone point started the fight (it is in the arena), and a
       teleport after the load made the area stream in at once (texture flashing) and dropped the player through

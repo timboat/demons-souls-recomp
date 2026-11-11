@@ -334,6 +334,15 @@ void show_image(const std::vector<Part>& l0, const std::vector<Part>& l1)
     ps3_overlay_image(px.data(), W, H, 0.5f, 0.975f, H * (37.0f / cell) / 720.0f);
 }
 
+std::string g_show_last;   /* show(): the text last drawn (the image is redrawn only when it changes) */
+/* Back on the title screen or its menus: the timer goes away until the next "BRX ingame" (a game loaded). */
+void hide()
+{
+    ps3_overlay_image(nullptr, 0, 0, 0, 0, 0);
+    ps3_overlay_set(0, ""); ps3_overlay_set(1, ""); ps3_overlay_set(2, "");
+    g_show_last.clear();
+}
+
 void show()
 {
     if (!g_visible) return;   // nothing drawn yet: the overlay starts empty
@@ -351,11 +360,10 @@ void show()
     if (souls_mult() > 1)   // shown for videos and runs: not the game's own souls
         l1.insert(l1.begin(), {"Souls x" + std::to_string(souls_mult()), 0.45f, GOLD[0], GOLD[1], GOLD[2]});
     if (font_load()) {
-        static std::string last;
         std::string key = t0;
         for (const Part& p : l1) key += "|" + p.text;
-        if (key == last) return;
-        last = key;
+        if (key == g_show_last) return;
+        g_show_last = key;
         ps3_overlay_set(0, "");
         ps3_overlay_set(1, "");
         show_image(l0, l1);
@@ -477,6 +485,14 @@ extern "C" void br_mark(int kind)
     const unsigned long long t = ps3_qpc_us();
     g_mark_us = t;
     g_mark_kind = kind;
+    /* The title screen (PRESS START) after playing: out of the game until one is loaded again. The title's
+     * menus (New / Load Game) have no mark of their own, so "not in the game" (pause_now 4) keeps the run
+     * paused there, and the timer is hidden as before the first load. */
+    if (kind == 3 && g_visible) {
+        g_visible = false; g_loading = false;
+        hide();
+        fprintf(stderr, "[bossrush] title screen: timer hidden and paused until a game is loaded%s", "\n");
+    }
     tick(t, kind);
 }
 
