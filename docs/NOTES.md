@@ -3340,6 +3340,32 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked on the 7950X3D desktop, which also has two (RTX 4090 + the CPU's Radeon): default -> "[gpu] NVIDIA
       GeForce RTX 4090", boss rush sandbox 60 fps; DES_GPU=integrated -> "[gpu] AMD Radeon(TM) Graphics", 60 fps,
       no errors (a far newer chip than the laptop's UHD 630 with its 2018 driver). The laptop itself still to test.
+200. **Autosaves lost on restart on PCs that place the guest memory below 4 GB (2026-11-12, Discord report):**
+    - Report: saves load from the main menu in the same session, but after quitting the game starts a new one;
+      after deleting the saves and on v2026.11.11 the title says "Failed to load SAVE DATA". Their log:
+      `AutoSave2(version=0, dir='BLUS30443DEMONSS005')` then `AutoSave(version=0, dir='')`, `SAVE dir=''`.
+    - Cause: cellSaveDataAutoSave2 maps dirName from a guest address to a host pointer (savedata_host_str) and
+      passed the mapped pointer on to cellSaveDataAutoSave, which maps it again. savedata_host_str takes anything
+      below 4 GB for a guest address, so wherever Windows reserves the 4 GB guest arena below 4 GB (it can, from
+      0x80000000: KUSER_SHARED_DATA at 0x7FFE0000 is the floor), the second mapping read an empty string. Every
+      autosave went loose into savedata/ itself, and AutoLoad2 (mapped once, correctly) found no folder after a
+      restart. This desktop's arena sits at 0x16B'xxxxxxxx, so it never showed here. hle_cellSaveDataUserAutoSave
+      already avoided AutoSave2 for this reason; the _2 entry itself was never fixed.
+    - Fix (patches/ps3recomp-local.patch):
+      - cellSaveDataAutoSave2 hands AutoSave the pointer exactly as the title passed it.
+      - boot_main.cpp reserves the arena with MEM_TOP_DOWN, so it is always above 4 GB on Windows (and under
+        Wine/Proton) and the other "below 4 GB = guest" tests (cellRtc, the loader) cannot misread a host pointer
+        either. Every run logs `[vm] guest memory at <address>`.
+      - Recovery: the first time a run names a save folder, loose save files in savedata/ (a PARAM.SFO there can
+        only be this bug's leftovers) are moved into it. A folder holding an older save is renamed to
+        `<dir>.before-move` first; if the folder's PARAM.SFO is the newer one, the loose files go to
+        `savedata/_misplaced_saves` instead. Nothing is deleted.
+    - Checked (test install, boss rush sandbox): arena forced to 0x80000000 reproduces the report's log exactly
+      and leaves 6 loose files in savedata/; with the fix at 0x80000000 the autosaves go to BLUS30443DEMONSS005 and
+      the loose files are moved back. A save staged as 14 loose files (the reporter's state) on the fixed build
+      with the default arena (now 0x7FF3'xxxxxxxx): moved back, Profile List shows the profiles, loads into
+      Boletarian Palace. Not built on macOS/Linux (POSIX branch of the recovery uses opendir/readdir).
+    - Fix numbers: this desktop now uses 200 and up (104-109 used up; 110-199 belong to the other PCs).
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
