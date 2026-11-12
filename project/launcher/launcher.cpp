@@ -298,8 +298,13 @@ static HANDLE run_cmd(const wstring& what, bool console, const wstring* env = nu
     si.cb = sizeof si;
     PROCESS_INFORMATION pi{};
     DWORD flags = (console ? CREATE_NEW_CONSOLE : CREATE_NO_WINDOW) | CREATE_UNICODE_ENVIRONMENT;
+    // cmd cannot start in a network folder (\\server\share, GitHub #45): it warns and falls back to C:\Windows.
+    // The bats find their own folder from %~dp0 (and pushd it there), so start them in the system folder instead.
+    wchar_t sys[MAX_PATH];
+    const wchar_t* cwd = g_root.c_str();
+    if (g_root.rfind(L"\\\\", 0) == 0 && GetSystemDirectoryW(sys, MAX_PATH)) cwd = sys;
     if (!CreateProcessW(cs.c_str(), cmd.data(), nullptr, nullptr, FALSE, flags, env ? (void*)env->c_str() : nullptr,
-                        g_root.c_str(), &si, &pi))
+                        cwd, &si, &pi))
         return nullptr;
     CloseHandle(pi.hThread);
     return pi.hProcess;
@@ -651,6 +656,11 @@ static bool git_run(const wstring& git, const wstring& args, std::string* out, D
     eb.set(L"GCM_INTERACTIVE", L"never");
     eb.set(L"GIT_HTTP_LOW_SPEED_LIMIT", L"1000");
     eb.set(L"GIT_HTTP_LOW_SPEED_TIME", L"20");
+    // A clone on a NAS / network share can belong to another account as git sees it ("dubious ownership",
+    // GitHub #45): trust it for these commands only, as setup/patch_sync.py does for SETUP and BUILD.
+    eb.set(L"GIT_CONFIG_COUNT", L"1");
+    eb.set(L"GIT_CONFIG_KEY_0", L"safe.directory");
+    eb.set(L"GIT_CONFIG_VALUE_0", L"*");
     wstring env = eb.block();
     wstring cmd = L"\"" + git + L"\" " + args;
     STARTUPINFOW si{};
@@ -767,7 +777,10 @@ static void start_update(const wstring& git, bool pull, bool zip = false) {
         return e;
     };
     std::string s = "@echo off\r\nchcp 65001 >nul\r\ntitle Demon's Souls - update\r\n";
-    s += "cd /d \"" + oem(g_root) + "\" || goto :failed\r\n";
+    // pushd, not cd /d: cmd cannot cd into a network folder (\\server\share, GitHub #45); pushd gives it a drive
+    // letter (popd below frees it). safe.directory: the same trust as git_run, for the git pull.
+    s += "pushd \"" + oem(g_root) + "\" || goto :failed\r\n"
+         "set \"GIT_CONFIG_COUNT=1\"\r\nset \"GIT_CONFIG_KEY_0=safe.directory\"\r\nset \"GIT_CONFIG_VALUE_0=*\"\r\n";
     if (pull)
         s += "echo Getting the newest version (git pull)...\r\n\"" + oem(git) + "\" pull --ff-only || goto :failed\r\necho.\r\n";
     if (zip)   // the launcher has closed by now; update.py waits a moment if its exe is still in use
@@ -777,9 +790,9 @@ static void start_update(const wstring& git, bool pull, bool zip = false) {
     // and no full path, because call expands % a second time (a folder named "100%" would break it)
     s += "call \".\\BUILD.bat\" || goto :failed\r\n"
          "del \"" + oem(pending_marker()) + "\" 2>nul\r\n"
-         "echo.\r\necho Up to date. Opening the launcher again...\r\n"
+         "popd\r\necho.\r\necho Up to date. Opening the launcher again...\r\n"
          "start \"\" \"" + oem(self) + "\"\r\ntimeout /t 4 >nul\r\nexit /b 0\r\n"
-         ":failed\r\necho.\r\necho The update stopped: see the messages above. Once it is fixed, press \"Check for\r\n"
+         ":failed\r\npopd 2>nul\r\necho.\r\necho The update stopped: see the messages above. Once it is fixed, press \"Check for\r\n"
          "echo updates\" in the launcher again to finish it (or run BUILD.bat).\r\n"
          "start \"\" \"" + oem(self) + "\"\r\npause\r\nexit /b 1\r\n";
     HANDLE f = CreateFileW(bat.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);

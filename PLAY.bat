@@ -28,6 +28,15 @@ rem Uses the build SETUP.bat / BUILD.bat make (port\build_opt).
 rem DemonsSoulsLauncher.exe runs this file with the choices from its window as these variables;
 rem DES_LAUNCHER=1 (set by it) skips the pauses: the launcher reports errors itself.
 setlocal
+rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
+rem letter while this window is open, and this file runs again from there.
+if not "%~d0"=="\\" goto :ds_local
+pushd "%~dp0" || goto :ds_unc_failed
+call "%CD%\%~nx0" %*
+set "DS_RC=%errorlevel%"
+popd
+exit /b %DS_RC%
+:ds_local
 set "D=%~dp0"
 if "%D:~-1%"=="\" set "D=%D:~0,-1%"
 set "PS3_TITLE=Demon's Souls (ps3recomp)"
@@ -306,5 +315,12 @@ exit /b 0
 :bad_fps
 echo DES_FPS=%DES_FPS% is not a frame rate this port can run: use 30, 50, 60, unlimited, or a whole
 echo number from 31 to 240.
+if not defined DES_LAUNCHER pause
+exit /b 1
+
+:ds_unc_failed
+echo This network folder could not be given a drive letter: "%~dp0"
+echo Map the share to a drive letter (Explorer: This PC - Map network drive) and start from there,
+echo or keep this folder on a local disk and only your disc image on the network.
 if not defined DES_LAUNCHER pause
 exit /b 1

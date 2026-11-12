@@ -3366,6 +3366,23 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       with the default arena (now 0x7FF3'xxxxxxxx): moved back, Profile List shows the profiles, loads into
       Boletarian Palace. Not built on macOS/Linux (POSIX branch of the recovery uses opendir/readdir).
     - Fix numbers: this desktop now uses 200 and up (104-109 used up; 110-199 belong to the other PCs).
+201. **Install on a NAS / network share (\\server\share, GitHub #45):**
+    - Report: on an SMB share the launcher does not work and SETUP.bat stops with "UNC paths are not supported".
+    - Cause: cmd.exe cannot make a UNC path its current folder. Every top-level bat starts with `cd /d "%~dp0"`, which
+      fails and leaves cmd in C:\Windows, so .venv, deps, setup\ and the game's cwd-relative saves, shader cache and
+      texture packs all pointed there. The launcher also started cmd with the UNC folder as its current directory,
+      and its update script did `cd /d <folder>`.
+    - Fix: SETUP, BUILD, REPORT and PLAY.bat start with a stub: when `%~d0` is `\` they `pushd "%~dp0"` (cmd maps
+      the share to a free drive letter for as long as the window is open), run themselves again from that letter with
+      the same arguments, popd and return its exit code. Local installs skip the stub. The launcher starts its bats
+      in the system folder when its own folder is UNC (no cmd warning), the update script uses pushd/popd, and the
+      launcher's git calls and the update's git pull trust the checkout (safe.directory=*, as patch_sync does), for
+      shares git sees as owned by another account.
+    - Checked: the real stub (BUILD.bat's, with an echo body) run from \\localhost\C$\...\it's a dir\ re-ran
+      from Z:\..., kept the arguments ("my iso (1).iso" --key 12), wrote into the share folder, returned the exit
+      code, and left no drive mapping behind (net use). The launcher compiles. A full SETUP on a real NAS is untested
+      (building ~2 GB over SMB will be slow); keeping the install local and only the disc image on the NAS already
+      worked before this fix.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,

@@ -2,6 +2,15 @@
 rem Rebuilds DemonsSoulsRecomp.exe after you change code (incremental; SETUP.bat must have run once).
 rem   BUILD.bat [--jobs N] [ninja targets...]
 setlocal
+rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
+rem letter while this window is open, and this file runs again from there.
+if not "%~d0"=="\\" goto :ds_local
+pushd "%~dp0" || goto :ds_unc_failed
+call "%CD%\%~nx0" %*
+set "DS_RC=%errorlevel%"
+popd
+exit /b %DS_RC%
+:ds_local
 cd /d "%~dp0"
 rem CMake treats [ ] in a path as a wildcard (its globs then find nothing) and cmd breaks on & in one:
 rem stop here with a clear message instead of failing later.
@@ -52,4 +61,11 @@ echo This folder's path has a [ ] or ^& in it, which the build tools cannot hand
 echo   "%CD%"
 echo Move or rename the folder (for example C:\Games\DemonsSouls) and run this again.
 pause
+exit /b 1
+
+:ds_unc_failed
+echo This network folder could not be given a drive letter: "%~dp0"
+echo Map the share to a drive letter (Explorer: This PC - Map network drive) and start from there,
+echo or keep this folder on a local disk and only your disc image on the network.
+if not defined DES_LAUNCHER pause
 exit /b 1
