@@ -3292,6 +3292,40 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       scheduler places every thread, as with DES_HOTCORES=0. Checked: the 5800X (8 cores) still reserves.
     - Sound "behind" with the game under real time is the game's own pacing: what it triggers comes late. A run
       with AUDIO_RATE=1 (blocks a second, underruns, device queue) tells the output path apart from that.
+143. **synth2 a third cheaper: SPU float fallback in vectors, native resampler passes (2026-11-11, same laptop):**
+    - Still "slowed down and behind" after fix 142, also at 60 fps. Its reports: the output path is perfect
+      (AUDIO_RATE=1: 187.5 blocks/s, 0 underruns, device queue 15 ms), but synth2 (libsynth2, the SPU thread that
+      renders every voice once per 5.33 ms block) is at 94% of a core (p90 97, max 99) on the i7-8750H: saturated,
+      so the voices it renders come late / get dropped (as in fix 59). The 5800X here: 72-74% walking in 1-1.
+    - Profile (map exe, RIP + stack samples of synth2, 1-1 walk): resampler 1090 / 1120 ~45% of its busy time,
+      the gain ramp 2C20 ~30% of which most was spu__x8_fa_fix / _fm_fix / spu__sf_sum, 63C8 ~12%.
+    - 2C20 (per sample: gain = min(gain + step, 1.0), out = in * gain). A probe of its setup (2BE0): lane 0 is
+      gain 0x3F7FFF00 (0.99998) + step 0x2F5BE6FF (2e-10) -- 32 binades apart, outside the vector fast path's
+      29-binade window, and too small to ever move the truncated gain -- and lanes 1-3, loaded from neighbouring
+      fields, hold words with biased exponent 255 (0xFFFF0000) that cvtps_pd cannot widen. So every sample of
+      every ramped voice took the per-lane 128-bit integer path, for fa and fm.
+    - Fix 1 (runtime/spu/spu_helpers.h, AVX2): the fix functions are now a second vector tier, exact by
+      construction: words widened to double by hand (exponent 255 included), results packed by hand (below
+      2^-126 +0, 2^128..2^129 exponent 255, 2^129 and up +-Smax), fa / fs terms 30+ binades apart by the exact
+      rule (the big word, or the big word minus 1 when the signs differ: the small term is under 1/64 of its last
+      place). Only fma lanes whose double sum rounded onto a 24-bit boundary still go one by one. The fast path
+      is unchanged. SPU_X8_FIX_SLOW (compile-time) = old fallback. Checked: test_spu_float_exact.c as is (447 M
+      lanes) and with every lane forced through the new tier (447 M, then 1.7 G at scale 6): 0 mismatches; an
+      agent review's own adversarial generators (gaps 25-40, exponents 254/255, results at 2^-126 / 2^128 / 2^129,
+      fma boundaries; 918 M lanes): 0 mismatches. synth2 walking 74 -> 67%.
+    - Fix 2 (port/spu/spu_0010_at_01818080/spu_recomp.c, lifted-code.patch): the resampler, one output sample
+      per pass of 1090 -> 1120 (or -> FB0 -> 1090 when the position does not advance), a 4-tap filter fm + 3 fma.
+      A C loop at the top of 1090 runs every pass that is certain to come back to 1090 -- the lifted statements in
+      order, the filter in lane 0 only (spu__fm_any / spu__fma_any): the store takes r3's lane 0 (cwd mask),
+      r84 / r3 are overwritten in the same pass, r13 / r7 by the next 1090 before any read. The pass that leaves
+      (last sample, advance 2+, refill at r80+0x90 > 27, a direct hop that would fall back to the trampoline) is
+      left to the lifted code, so LS and every register leave 1090 exactly as before. SYNTH2_RESAMPLE=0 = off.
+    - Checked against the lifted code itself: SYNTH2_RESAMPLE_CHECK=1 replays every 16th call's passes with the
+      lifted functions on a copy of the context (steps = 0: each SPU_DIRECT returns after one body) and compares
+      the whole LS and all 128 registers: 1-1 walk, 1.96 M calls, 46.6 M passes, 0 mismatches. Control:
+      =2 also compares r13 / r7 lanes 1-3 and reports mismatches there, as it must. Agent review: no defects.
+    - Result (1-1 walk, 175-280 s, this 5800X): synth2 74% (fix 142 build) -> 67% (fix 1) -> 50% (both); fast
+      loop off in the same exe 66%. The laptop's 94% should land near 64%. Its sound is still to be heard there.
 109. **The live renderer picks the high-performance GPU on two-GPU laptops (2026-11-11, GTX 1070 Max-Q laptop):**
     - Report: the tutorial "crashed" in full screen on an i7-8750H + GTX 1070 Max-Q laptop whose screen is driven by
       its Intel UHD 630 (Optimus). Perf log: ~36 fps while GPU-bound at 1x, then three PSO creations failing
