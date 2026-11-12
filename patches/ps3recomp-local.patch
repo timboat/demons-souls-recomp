@@ -26586,10 +26586,10 @@ index 14c6425..e557b7d 100644
                                 uint64_t source, uint64_t data1,
                                 uint64_t data2,  uint64_t data3);
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
-index 41d5721..87c03ae 100644
+index 41d5721..d8727d2 100644
 --- a/runtime/syscalls/sys_ppu_thread.c
 +++ b/runtime/syscalls/sys_ppu_thread.c
-@@ -169,6 +169,173 @@ static void wait_first_block(const ppu_thread_info* t, uint64_t tid)
+@@ -169,6 +169,175 @@ static void wait_first_block(const ppu_thread_info* t, uint64_t tid)
              (unsigned long long)tid, t->name, t->priority, PRIO_START_TIMEOUT_MS);
  }
  
@@ -26608,8 +26608,10 @@ index 41d5721..87c03ae 100644
 + * core leaves the default set only once its slot is claimed, so a slot nobody claims (the dispatcher
 + * with DES_DISPQ_NATIVE=0) costs nothing. Reserved: two cores of the fastest efficiency class (Intel
 + * P-cores), the best by Windows' scheduling class (preferred cores) and then the highest-numbered,
-+ * within the process affinity mask (fix 65's L3 pin). Only with at least 6 usable physical cores of
-+ * that class, so four remain for the rest; smaller CPUs, hybrid CPUs with fewer P-cores, and
++ * within the process affinity mask (fix 65's L3 pin). Only with at least 8 usable physical cores of
++ * that class, so six remain for the rest (Demon's Souls NOTES fix 142: on a 6-core i7-8750H laptop the
++ * four left over were too few -- frames better and sound less behind with it off); smaller CPUs, hybrid
++ * CPUs with fewer P-cores, and
 + * machines with several processor groups keep the scheduler's placement. Parked cores count: parking
 + * changes at run time, and the scheduler deals with it.
 + * ps3_hot_thread(slot) is called by the thread itself (0 = HighGraphics, 1 = dispatcher, at the
@@ -26678,7 +26680,7 @@ index 41d5721..87c03ae 100644
 +        if (k == nfast) { fcore[nfast] = s_hot_core[i]; frank[nfast] = sched[i]; nfast++; }
 +        else if (sched[i] > frank[k]) frank[k] = sched[i];
 +    }
-+    if (nfast < 6) {
++    if (nfast < 8) {   /* fix 142: was 6 */
 +        fprintf(stderr, "[hotcores] %d usable physical cores, %d of the fastest class: left to the scheduler\n",
 +                nall, nfast);
 +        return 0;
@@ -26763,7 +26765,7 @@ index 41d5721..87c03ae 100644
  /* ---------------------------------------------------------------------------
   * Host thread entry point
   * -----------------------------------------------------------------------*/
-@@ -180,6 +347,8 @@ static void* ppu_host_thread_proc(void* param)
+@@ -180,6 +349,8 @@ static void* ppu_host_thread_proc(void* param)
  {
      ppu_thread_info* info = (ppu_thread_info*)param;
      ps3_thread_name("ppu %s", info->name);
@@ -26772,7 +26774,7 @@ index 41d5721..87c03ae 100644
  
  #ifdef _WIN32
      /* Reserve stack for the STACK_OVERFLOW handler, same as main() does for the
-@@ -269,6 +438,7 @@ static void* ppu_host_thread_proc(void* param)
+@@ -269,6 +440,7 @@ static void* ppu_host_thread_proc(void* param)
  
      /* Signal anyone waiting for join */
  #ifdef _WIN32

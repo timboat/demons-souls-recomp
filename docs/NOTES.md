@@ -3281,6 +3281,17 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
        the rest of the picture as before. Two 120 s runs, no errors. The runtime patch's rsx_draw_engine.c
        section was regenerated; the whole patch applies under core.autocrlf false / true / input and gives the
        built files. Not checked: other areas, where the same overwrite may have changed blending.
+142. **Hot cores only with 8 or more physical cores (2026-11-11, GTX 1070 Max-Q laptop, i7-8750H 6 cores):**
+    - User, on the laptop: sound "slightly slowed down and delayed from when it's supposed to happen"; with
+      DES_HOTCORES=0 the frames were better. Its report (72 fps mode, 144 Hz): the whole process at ~5.5 cores,
+      game time 0.87-1.00x of real time per minute (the 72 steps a second not held), 814 hitches a minute, mostly
+      game threads waking late.
+    - Cause: fix 132 reserves two whole physical cores (HighGraphics, the SPU dispatcher) once there are 6; on a
+      6-core CPU everything else -- synth2 (88% of a core), the main thread, the mixers, Havok -- shared four.
+    - Fix (runtime/syscalls/sys_ppu_thread.c): at least 8 physical cores of the fastest class; under that the
+      scheduler places every thread, as with DES_HOTCORES=0. Checked: the 5800X (8 cores) still reserves.
+    - Sound "behind" with the game under real time is the game's own pacing: what it triggers comes late. A run
+      with AUDIO_RATE=1 (blocks a second, underruns, device queue) tells the output path apart from that.
 109. **The live renderer picks the high-performance GPU on two-GPU laptops (2026-11-11, GTX 1070 Max-Q laptop):**
     - Report: the tutorial "crashed" in full screen on an i7-8750H + GTX 1070 Max-Q laptop whose screen is driven by
       its Intel UHD 630 (Optimus). Perf log: ~36 fps while GPU-bound at 1x, then three PSO creations failing
