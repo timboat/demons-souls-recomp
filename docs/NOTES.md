@@ -3416,6 +3416,44 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Next on this laptop: the dispatcher (image 1, 39% of spu job): it acks with 0, so Lr stays set and its idle
       loop never pauses; a sleeping idle wait there needs the same care plus an fps A/B (HighGraphics hand-off).
 
+145. **The SPU command dispatcher sleeps while its queue is empty; on this laptop 1-1 is the game's frame skip, not 31 fps (2026-11-12, GTX 1070 Max-Q laptop, i7-8750H):**
+    - What 1-1 really shows here (PS3_FTRACE + the perf log's draw count, 72 fps mode, walking at the Boletaria start): 31-35
+      presents a second, but every second one is a catch-up frame without its 3D scene (1 draw) 1-2 ms after a full one --
+      fix 72's frame skip, which fires once a frame takes over 36 ms of real time. Full pictures 15.7-17.6 a second, 95th
+      percentile gap between them 73-83 ms. In 30 fps mode 20-21 full a second. GPU 13-25% busy at 746 MHz: not the GPU.
+      The chain per full frame (\~58 ms): HighGraphics runs \~26 ms, polls \~13 ms for the dispatcher's reply (0x00ACB0A0),
+      waits \~7 ms on the vblank semaphore and 13-23 ms in cond_wait (0x00B5D65C) for the game step and the SPU anim
+      tasks (image 5, \~10 ms single task). The CPU runs at 2.5-2.8 GHz with the ACPI thermal zone at \~92 C.
+    - DES_FRAME_SKIP=0 (fix 72's switch, no code change), A/B 2 + 2 runs, frame skip on / off, walk window: full pictures
+      15.7 / 16.1 -> 29.5 / 28.0 a second, 95th percentile gap 83 / 76 -> 44 / 46 ms; game time 0.98 / 0.99 -> 0.96 / 0.93
+      of real time (the adaptive step holds speed only down to 30 steps a second). HighGraphics then 96-98% busy: its own
+      CPU (\~34 ms per frame at this clock, a flat profile over lifted PPU code; \~10% lock-line coherency) is the limit.
+      Not made the default: it trades \~5% game speed for twice the pictures, a pacing call (players can set it in Extra
+      settings).
+    - The dispatcher (image 1, fix 112's native chain or the lifted 0x5120 -> 0x4694 loop): idle, it reads RdEventStat,
+      acks with r5 = 0 (so Lr stays pending), GETLLARs the queue line and compares word 0 with its cursor (LS 0x13400) --
+      it spins on hardware too, which costs an SPU nothing; here a host core between HighGraphics' bursts. Fix 144's wait
+      cannot be used (its predicate accepts the stale Lr).
+    - Fix (runtime/spu/spu_channels.c spu_rdch_dispq_wait, called at both 0x5120 sites via lifted-code.patch): spin
+      SPU_DISPQ_SPIN_US (200), then sleep on fix 144's lr_seq until the reserved line loses its reservation or its bytes
+      differ from the GETLLAR copy; 1 ms re-poll and 16 ms cap as fix 144. Then the normal spu_rdch: same guest values.
+      spu_coherency.c: both notifiers store resv_valid = 0 before the locked OR now (review finding: stored after it, a
+      same-bytes write could clear resv_valid unseen by a waiter while later writers, seeing no holder, skipped the wake --
+      up to one re-poll late). SPU_DISPQ_WAIT=1 / 0; unset = on only on Windows without fix 132's hot cores (fewer than 8
+      physical cores, or DES_DISPQ_NATIVE=0): with its own core the spin costs nobody anything. Stats: SPU_LR_WAIT_STATS=1
+      ("dispq img1" line). sys_ppu_thread.c: ps3_hot_cores_reserved().
+    - A/B (frame skip off, 2 + 2 runs, on / off, walk): full pictures 25.4 / 28.0 vs 26.0 / 26.6 (noise), spu job 153-158%
+      vs 169-174%, process \~0.2 core less. \~150 waits a second, \~125 ending inside the spin, \~25 a second (one a frame)
+      sleeping 5-16 ms and woken by notify, wake latency mean 18-42 us; re-poll 0, cap 0.
+    - Reviewed (agent workflow: wake / semantics / performance lenses, each finding verified by a refuter): two confirmed and
+      fixed (the notifier order above; the default with DES_DISPQ_NATIVE=0). Rejected: the standalone SPU fixtures do not
+      link -- they already did not before this fix (lv2_spu_receive_event).
+    - Tried, not changed: HighGraphics alone on one physical core (an outside CPU-set pin at 40 s, every other thread
+      off that core; frame skip off, 2 + 2 runs): walk 27.8 / 27.9 vs 25.5 / 27.1 full pictures a second -- maybe +5%,
+      inside the noise; synth2 unchanged. A one-slot fix 132 for 6-7 core CPUs would need more runs first.
+    - 60 at 1-1 on this laptop would need HighGraphics' own frame (\~34 ms) about halved; fixes 144 / 145 free CPU
+      (\~0.6 core together) but this CPU's clock is held by heat / power, not by how many cores are busy.
+
 ### Where it stands (2026-10-27)
 New game -> Create Profile -> tutorial loads, the opening cutscene plays and gameplay renders the corridor
 with the player at the game's own auto-exposure (fix 21) and full sharpness and fog (fix 22). Open problems:

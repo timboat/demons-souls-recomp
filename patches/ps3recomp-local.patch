@@ -22464,7 +22464,7 @@ index 4b7df8c..672babc 100644
 +
  #endif /* PS3_LOG_H */
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 5fc5020..9d9df9b 100644
+index 5fc5020..6d76de3 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -57,6 +57,9 @@ static uint64_t spu_host_ns(void)
@@ -22569,7 +22569,15 @@ index 5fc5020..9d9df9b 100644
 +static int s_atom_trace_on = -1;
 +static SPU_NOINLINE_COLD void spu_atom_trace_slow(const spu_context* ctx, const char* what,
 +                                                  uint32_t ea, const uint8_t* bytes)
-+{
+ {
+-    /* Classify FIRST. Every MFC_Cmd write lands here, and only the switch at
+-     * the bottom used to filter -- so the uncommitted-EA guard below reported
+-     * ORDINARY DMA as `[spu-atomic]`. A plain put (0x20) to a garbage EA read
+-     * as an atomic spin, which is a genuinely misleading place to start
+-     * debugging from. Non-atomic commands belong to the DMA engine. */
+-    if (cmd != MFC_GETLLAR_CMD && cmd != MFC_PUTLLC_CMD &&
+-        cmd != MFC_PUTLLUC_CMD && cmd != MFC_PUTQLLUC_CMD)
+-        return 0;
 +    static uint32_t eas[8]; static int n;
 +    if (s_atom_trace_on < 0) {
 +        const char* e = getenv("SPU_ATOM_EAS");
@@ -22605,7 +22613,11 @@ index 5fc5020..9d9df9b 100644
 +{
 +    if (s_atom_trace_on) spu_atom_trace_slow(ctx, what, ea, bytes);
 +}
-+
+ 
+-    uint32_t ea  = ctx->mfc_eal & ~(uint32_t)(MFC_ATOMIC_LINE - 1);
+-    uint32_t lsa = ctx->mfc_lsa & SPU_LS_MASK;
+-    uint8_t* ls  = &ctx->ls[lsa];
+-    uint8_t* mem = vm_base + ea;
 +/* fix 77: the off-by-default diagnostics of spu_wrch and spu_mfc_atomic run
 + * in the cold helpers below, at their original points, only when one of their
 + * enabling variables is set. Each helper is its block verbatim, with its own
@@ -22625,20 +22637,7 @@ index 5fc5020..9d9df9b 100644
 +    return 0;
 +}
 +static inline int spu_wrch_diag_on(void)
- {
--    /* Classify FIRST. Every MFC_Cmd write lands here, and only the switch at
--     * the bottom used to filter -- so the uncommitted-EA guard below reported
--     * ORDINARY DMA as `[spu-atomic]`. A plain put (0x20) to a garbage EA read
--     * as an atomic spin, which is a genuinely misleading place to start
--     * debugging from. Non-atomic commands belong to the DMA engine. */
--    if (cmd != MFC_GETLLAR_CMD && cmd != MFC_PUTLLC_CMD &&
--        cmd != MFC_PUTLLUC_CMD && cmd != MFC_PUTQLLUC_CMD)
--        return 0;
--
--    uint32_t ea  = ctx->mfc_eal & ~(uint32_t)(MFC_ATOMIC_LINE - 1);
--    uint32_t lsa = ctx->mfc_lsa & SPU_LS_MASK;
--    uint8_t* ls  = &ctx->ls[lsa];
--    uint8_t* mem = vm_base + ea;
++{
 +    if (__builtin_expect(g_spu_wrch_diag == 0, 1)) return 0;
 +    if (g_spu_wrch_diag < 0) g_spu_wrch_diag = spu_wrch_diag_init();
 +    return g_spu_wrch_diag;
@@ -23468,7 +23467,7 @@ index 5fc5020..9d9df9b 100644
      WakeAllConditionVariable((CONDITION_VARIABLE*)&ctx->ch_wait_cv);
  }
  
-@@ -1217,6 +1659,169 @@ static void spu_ch_wait(spu_context* ctx, uint32_t channel, const char* op)
+@@ -1217,6 +1659,284 @@ static void spu_ch_wait(spu_context* ctx, uint32_t channel, const char* op)
      ctx->status = SPU_STATUS_RUNNING;
  }
  
@@ -23536,9 +23535,9 @@ index 5fc5020..9d9df9b 100644
 +    return memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0;
 +}
 +
-+/* Stats per site (0-3 = images 6-9). how: 0 ended while spinning, 1 notify, 2 re-poll saw the
-+ * line change (a writer that bypasses the notifier), 3 cap / stop. */
-+enum { LRW_SITES = 4, LRW_BUCKETS = 7 };
++/* Stats per site (0-3 = images 6-9, 4 = the command dispatcher's idle poll, fix 145). how: 0 ended
++ * while spinning, 1 notify, 2 re-poll saw the line change (a writer that bypasses the notifier), 3 cap / stop. */
++enum { LRW_SITES = 5, LRW_BUCKETS = 7 };
 +static const uint64_t s_lrw_edge_us[LRW_BUCKETS - 1] = { 10, 50, 200, 1000, 5000, 16000 };
 +static volatile long long s_lrw_n[LRW_SITES][4], s_lrw_hist[LRW_SITES][LRW_BUCKETS];
 +static volatile long long s_lrw_lat_n[LRW_SITES], s_lrw_lat_ns[LRW_SITES], s_lrw_lat_hi[LRW_SITES];
@@ -23569,10 +23568,10 @@ index 5fc5020..9d9df9b 100644
 +                        lt = __atomic_exchange_n(&s_lrw_lat_ns[i], 0, __ATOMIC_RELAXED),
 +                        lh = __atomic_exchange_n(&s_lrw_lat_hi[i], 0, __ATOMIC_RELAXED);
 +        if (!tot) continue;
-+        fprintf(stderr, "[lr-wait] img%d: %.0f waits/s, ended spinning %.0f / notify %.0f / re-poll %.0f / cap %.0f; "
++        fprintf(stderr, "[lr-wait] %s%d: %.0f waits/s, ended spinning %.0f / notify %.0f / re-poll %.0f / cap %.0f; "
 +                "length <10us %lld <50 %lld <200 %lld <1ms %lld <5ms %lld <16ms %lld more %lld; "
 +                "wake latency mean %.0f us, %lld over 200 us\n",
-+                i + 6, tot / s, n[0] / s, n[1] / s, n[2] / s, n[3] / s,
++                i < 4 ? "img" : "dispq img", i < 4 ? i + 6 : 1, tot / s, n[0] / s, n[1] / s, n[2] / s, n[3] / s,
 +                h[0], h[1], h[2], h[3], h[4], h[5], h[6], ln ? (double)lt / 1000.0 / (double)ln : 0.0, lh);
 +    }
 +}
@@ -23588,7 +23587,7 @@ index 5fc5020..9d9df9b 100644
 +            spu_lrw_cfg();
 +        while ((st = __atomic_load_n(&s_lrw_state, __ATOMIC_ACQUIRE)) == 0 || st == 3) YieldProcessor();
 +    }
-+    if (st == 2 && (site != 3 || s_lrw_img9) && site >= 0 && site < LRW_SITES && !yz_lockstep_enabled() &&
++    if (st == 2 && (site != 3 || s_lrw_img9) && site >= 0 && site < 4 && !yz_lockstep_enabled() &&
 +        ctx->event_mask == 0x400u && ctx->resv_valid && vm_base && ctx->resv_ea && !spu_lrw_done(ctx)) {
 +        const uint64_t t0 = spu_host_ns();
 +        const uint64_t ft_t0 = PS3_FT_ON() ? ps3_ft_now() : 0;
@@ -23635,10 +23634,125 @@ index 5fc5020..9d9df9b 100644
 +    return spu_rdch(ctx, SPU_RdEventStat);   /* unchanged: stop request, Lr poll, idle pause, value */
 +}
 +
++/* ===========================================================================
++ * Demon's Souls NOTES fix 145: the SPU command dispatcher (image 1) sleeps while its queue is empty.
++ * Its idle loop (0x5120 -> 0x4694 -> 0x5120, lifted and in fix 112's native chain) reads
++ * SPU_RdEventStat, acks with r5 = 0, GETLLARs the queue line and compares the write cursor with its
++ * own: on hardware it spins too (the Lr it never acks stays pending), which costs an SPU nothing.
++ * Here it is a host core polling GETLLAR + memcmp + channel calls flat out between HighGraphics'
++ * bursts. Fix 144's wait cannot be used as is: Lr stays set, so its predicate is always true.
++ * This one waits for what the loop is really looking for -- the reserved line losing its
++ * reservation or changing bytes -- and ignores the stale Lr bit. Same wake (lr_seq bumped by every
++ * coherent writer through spu_ch_wake). Lost-wake proof: writers store the line bytes and
++ * resv_valid = 0 (spu_coherency.c stores it before SPU_EVENT_SET since this fix), then do the
++ * locked OR -- a full barrier, and before the seq_cst load of lr_waiting in spu_ch_wake on ARM64 --
++ * then read lr_waiting; the waiter sets lr_waiting (seq_cst), then reads lr_seq, then checks
++ * resv_valid and compares the line. Either the waiter sees the write, or the writer sees
++ * lr_waiting and bumps lr_seq after the waiter read it. (With resv_valid stored after the OR, a
++ * same-bytes write could leave resv_valid = 0 unseen by the waiter while later writers, seeing no
++ * holder, skipped the wake: up to one re-poll late.) A-B-A of a queue cursor within one wait
++ * cannot happen (the queue would have to wrap while nobody pops it). The 1 ms re-poll and the cap
++ * are fix 144's (SPU_LR_WAIT_POLL_MS / _MAX_MS).
++ * SPU_DISPQ_WAIT=1 on, =0 off; unset = on only when fix 132's hot cores are not reserved (fewer
++ * than 8 physical cores, or DES_DISPQ_NATIVE=0, under which the dispatcher never claims its core):
++ * with its own core the dispatcher's spin takes nothing from anyone, and the
++ * wake latency would be paid for nothing. SPU_DISPQ_SPIN_US (default 200) spin before sleeping, so
++ * gaps inside HighGraphics' bursts never sleep. Stats: SPU_LR_WAIT_STATS=1 ("dispq img1" line).
++ * ===========================================================================*/
++static volatile int s_dqw_state;               /* 0 = not decided, 1 = off, 2 = on, 3 = being decided */
++static uint64_t s_dqw_spin_ns;
++
++static SPU_NOINLINE_COLD void spu_dqw_cfg(void)
++{
++    extern int ps3_hot_cores_reserved(void);
++    const char* e = getenv("SPU_DISPQ_WAIT");
++    /* the dispatcher claims its hot core in fix 112's native chain: DES_DISPQ_NATIVE=0 = no core of its own */
++    const char* nat = getenv("DES_DISPQ_NATIVE");
++    const int hot = ps3_hot_cores_reserved() && !(nat && nat[0] == '0');
++#ifdef _WIN32
++    const int on = e ? e[0] == '1' : !hot;
++#else
++    const int on = e && e[0] == '1';   /* measured on Windows only: opt-in elsewhere */
++#endif
++    e = getenv("SPU_DISPQ_SPIN_US");
++    int us = e ? atoi(e) : 200;
++    if (us < 0) us = 0;
++    if ((uint64_t)us * 1000u > s_lrw_max_ns) us = (int)(s_lrw_max_ns / 1000u);
++    s_dqw_spin_ns = (uint64_t)us * 1000u;
++    fprintf(stderr, "[dispq-wait] fix 145 %s: spin %d us (%s)\n", on ? "on" : "off", us,
++            getenv("SPU_DISPQ_WAIT") ? "SPU_DISPQ_WAIT" : hot ? "hot cores reserved" : "no hot cores / not Windows");
++    __atomic_store_n(&s_dqw_state, on ? 2 : 1, __ATOMIC_RELEASE);
++}
++
++static inline int spu_dqw_done(spu_context* ctx)
++{
++    if (!__atomic_load_n(&ctx->resv_valid, __ATOMIC_SEQ_CST)) return 1;
++    if (ctx->stop_request) return 1;
++    return memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0;
++}
++
++u128 spu_rdch_dispq_wait(spu_context* ctx);
++u128 spu_rdch_dispq_wait(spu_context* ctx)
++{
++    int st = __atomic_load_n(&s_dqw_state, __ATOMIC_ACQUIRE);
++    if (st == 0 || st == 3) {
++        int expect = 0;
++        if (st == 0 && __atomic_compare_exchange_n(&s_dqw_state, &expect, 3, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
++            int lst = __atomic_load_n(&s_lrw_state, __ATOMIC_ACQUIRE), x = 0;   /* fix 144's poll / cap / stats */
++            if (lst == 0 && __atomic_compare_exchange_n(&s_lrw_state, &x, 3, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
++                spu_lrw_cfg();
++            while ((lst = __atomic_load_n(&s_lrw_state, __ATOMIC_ACQUIRE)) == 0 || lst == 3) YieldProcessor();
++            spu_dqw_cfg();
++        }
++        while ((st = __atomic_load_n(&s_dqw_state, __ATOMIC_ACQUIRE)) == 0 || st == 3) YieldProcessor();
++    }
++    if (st == 2 && !yz_lockstep_enabled() && ctx->event_mask == 0x400u && ctx->resv_valid && vm_base &&
++        ctx->resv_ea && !spu_dqw_done(ctx)) {
++        const uint64_t t0 = spu_host_ns();
++        const uint64_t ft_t0 = PS3_FT_ON() ? ps3_ft_now() : 0;
++        int how = 0;
++        for (;;) {   /* spin */
++            for (int k = 0; k < 16; k++) YieldProcessor();
++            if (spu_dqw_done(ctx)) break;
++            if (spu_host_ns() - t0 >= s_dqw_spin_ns) { how = -1; break; }
++        }
++        int64_t lat = -1;
++        if (how < 0) {   /* sleep */
++            int bumped = 0;
++            uint64_t ts = 0;
++            __atomic_store_n(&ctx->lr_waiting, 1, __ATOMIC_SEQ_CST);
++            for (;;) {
++                const long seq = __atomic_load_n(&ctx->lr_seq, __ATOMIC_SEQ_CST);
++                if (spu_dqw_done(ctx)) break;
++                if (spu_host_ns() - t0 >= s_lrw_max_ns) break;
++                ts = spu_host_ns();
++                WaitOnAddress((volatile void*)&ctx->lr_seq, (void*)&seq, sizeof seq, s_lrw_poll_ms);
++                bumped = __atomic_load_n(&ctx->lr_seq, __ATOMIC_SEQ_CST) != seq;
++            }
++            __atomic_store_n(&ctx->lr_waiting, 0, __ATOMIC_SEQ_CST);
++            if (s_lrw_stats) {
++                const uint64_t now = spu_host_ns(), nt = __atomic_load_n(&ctx->lr_notify_ns, __ATOMIC_ACQUIRE);
++                const int changed = !ctx->resv_valid || memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0;
++                if (changed && bumped) {
++                    how = 1;
++                    if (nt >= ts && nt <= now) lat = (int64_t)(now - nt);
++                } else how = changed ? 2 : 3;
++            }
++        }
++        if (ft_t0) {
++            const uint64_t ft_t1 = ps3_ft_now();
++            if (ft_t1 - ft_t0 >= ps3_ft_min_ns())
++                ps3_ft_span(PS3_FT_SPU_WAIT, ctx->spu_id, SPU_RdEventStat, ctx->pc & SPU_LS_MASK, ft_t0, ft_t1);
++        }
++        if (s_lrw_stats) spu_lrw_note(4, how < 0 ? 3 : how, spu_host_ns() - t0, lat);
++    }
++    return spu_rdch(ctx, SPU_RdEventStat);   /* unchanged: the guest reads what it read before */
++}
++
  /* ===========================================================================
   * Channel read (returns value in the preferred word slot)
   * ===========================================================================*/
-@@ -1234,6 +1839,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1234,6 +1954,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
       * raise above), but only block it when the SPU has actually enabled events
       * (event_mask != 0) -- a masked-off read must return 0 immediately, not
       * park forever. RdInMbox/RdSigNotify park on their PPU producers. */
@@ -23679,7 +23793,7 @@ index 5fc5020..9d9df9b 100644
      if (channel == SPU_RdInMbox || channel == SPU_RdSigNotify1 || channel == SPU_RdSigNotify2)
          spu_ch_wait(ctx, channel, "rdch");
      else if (channel == SPU_RdEventStat && ctx->event_mask != 0)
-@@ -1298,7 +1937,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1298,7 +2052,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
          break;
      }
      case SPU_RdEventMask:   v = ctx->event_mask;                        break;
@@ -23701,7 +23815,7 @@ index 5fc5020..9d9df9b 100644
      /* CBEA 9.8: numeric bit 0 is interrupt-enable, independent of run status.
       * This runtime models nonisolated SPUs, so the isolation bit stays clear. */
      case SPU_RdMachStat:    v = ctx->int_enable & 1u; break;
-@@ -1887,14 +2539,35 @@ static int spu_ovl_ea_known(uint32_t ea)
+@@ -1887,14 +2654,35 @@ static int spu_ovl_ea_known(uint32_t ea)
      return 1;   /* full (cannot happen): never filter */
  }
  
@@ -23738,7 +23852,7 @@ index 5fc5020..9d9df9b 100644
      }
  }
  
-@@ -2067,11 +2740,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
+@@ -2067,11 +2855,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
  void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
  {
      if (s_ovl_src_count < SPU_OVL_SRC_MAX) {
@@ -23753,7 +23867,7 @@ index 5fc5020..9d9df9b 100644
      }
  }
  
-@@ -2083,13 +2758,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
+@@ -2083,13 +2873,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
   * keeps in its own data can be lifted. A body larger than one DMA arrives as
   * consecutive GETs (contiguous EA and LS); those are appended to the same
   * file. One file per source EA: ovl_<ea>.bin. */
@@ -23772,7 +23886,7 @@ index 5fc5020..9d9df9b 100644
      static uint32_t s_seen[256]; static unsigned s_n;
      static SPU_TLS uint32_t t_src, t_next_ea, t_next_lsa;
      FILE* f = NULL; char path[512];
-@@ -2115,7 +2791,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
+@@ -2115,7 +2906,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
  void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint32_t size, const char* what)
  {
      static int64_t s_g = -2;
@@ -23783,7 +23897,7 @@ index 5fc5020..9d9df9b 100644
      if (s_g < 0 || !vm_base) return;
      uint32_t g = (uint32_t)s_g;
      if (g < ea || g + 4 > ea + size) return;
-@@ -2148,6 +2826,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
+@@ -2148,6 +2941,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
          }
      }
      int nsrc = __atomic_load_n(&s_ovl_src_count, __ATOMIC_ACQUIRE);
@@ -23791,7 +23905,7 @@ index 5fc5020..9d9df9b 100644
      if (size < 512 && !spu_ovl_ea_known(ea)) return;
      for (int i = 0; i < nsrc; i++) {
          const spu_ovl_src* o = &s_ovl_src[i];
-@@ -2275,9 +2954,8 @@ void spu_spurs_taskset_syscall(spu_context* ctx)   /* non-static: also called by
+@@ -2275,9 +3069,8 @@ void spu_spurs_taskset_syscall(spu_context* ctx)   /* non-static: also called by
       * the real task entry -- so image 22 cannot halt on the first one. But a task
       * that has since done work and calls EXIT again means it: returning there makes
       * it re-enter and spin (observed: 6x num=0 from link 0x26E18 once the task is
@@ -23803,7 +23917,7 @@ index 5fc5020..9d9df9b 100644
      if (num == 0 && ctx->image_id == 22 && !getenv("YDKJ_CRI_EXIT_HALT")) {
          if (s_exit_seen++ == 0) { ctx->gpr[3]._u32[0] = 0; return; }   /* bootstrap */
          { static int _n = 0; if (PS3_LOG_FIRST(_n, 8))
-@@ -3316,4 +3994,15 @@ void spu_trace_rt(spu_context* ctx, uint32_t rt)
+@@ -3316,4 +4109,15 @@ void spu_trace_rt(spu_context* ctx, uint32_t rt)
  
  #ifdef __cplusplus
  }
@@ -23848,7 +23962,7 @@ index 79bffe7..4011536 100644
  }
  #endif
 diff --git a/runtime/spu/spu_coherency.c b/runtime/spu/spu_coherency.c
-index ed2bcf5..11583ad 100644
+index ed2bcf5..ae9ce6a 100644
 --- a/runtime/spu/spu_coherency.c
 +++ b/runtime/spu/spu_coherency.c
 @@ -18,6 +18,7 @@
@@ -23859,7 +23973,7 @@ index ed2bcf5..11583ad 100644
  
  #ifdef __cplusplus
  extern "C" {
-@@ -40,15 +41,67 @@ static volatile long g_lockline = 0;
+@@ -40,16 +41,68 @@ static volatile long g_lockline = 0;
   * pause, and yield after a long wait. The bare exchange loop let GH3's four
   * idle job-policy pollers saturate the line and delay every other SPU atomic
   * -- FMOD's mixer task among them, 25-40 ms at a time. */
@@ -23907,8 +24021,8 @@ index ed2bcf5..11583ad 100644
 +        LARGE_INTEGER b; QueryPerformanceCounter(&b);
 +        _InterlockedExchangeAdd64(&g_lockline_wait_ticks, b.QuadPart - a.QuadPart);
 +        _InterlockedIncrement64(&g_lockline_contended);
-+    }
-+}
+     }
+ }
 +void spu_lockline_lock(void)
 +{
 +    /* Statistics only, and only under SPU_JOB_STATS: a global counter written on
@@ -23923,12 +24037,13 @@ index ed2bcf5..11583ad 100644
 +            struct lockline_site* s = &s_ll_sites[((uintptr_t)ra >> 2) & 4095];
 +            s->ra = ra; s->n++;
 +        }
-     }
++    }
 +    if (!_InterlockedExchange(&g_lockline, 1)) return;
 +    spu_lockline_lock_slow();
- }
++}
  void spu_lockline_unlock(void) { _InterlockedExchange(&g_lockline, 0); }
  #elif defined(_WIN32)
+ /* Non-MSVC Windows keeps the plain spin, without a pthread dependency. */
 @@ -135,9 +188,123 @@ static unsigned char s_coh_bitmap[SPU_COH_BITMAP_SZ];
  typedef struct spu_coh_entry {
      spu_context* ctx;
@@ -24144,7 +24259,7 @@ index ed2bcf5..11583ad 100644
      __atomic_thread_fence(__ATOMIC_SEQ_CST);
      return 1;
  }
-@@ -353,8 +542,14 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+@@ -353,30 +542,100 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
      ppu_resv_break_line(ea);
      spu_coh_writer_fence();
      spu_coh_wake_watches(line);
@@ -24160,8 +24275,13 @@ index ed2bcf5..11583ad 100644
 +        else { if (!entry) break; c = entry->ctx; entry = entry->next; }
          if (!c || (const void*)c == self) continue;
          if (spu_coh_holds(c, line)) {
-             SPU_EVENT_SET(c, SPU_EVENT_LR);
-@@ -365,14 +560,76 @@ void spu_coh_notify_write_except(uint32_t ea, const void* self)
+-            SPU_EVENT_SET(c, SPU_EVENT_LR);
++            /* fix 145: resv_valid = 0 before the locked OR, so it is visible before spu_ch_wake reads lr_waiting */
+             __atomic_store_n(&c->resv_valid, 0, __ATOMIC_RELAXED);
++            SPU_EVENT_SET(c, SPU_EVENT_LR);
+             g_spu_lr_raise++;
+             spu_ch_wake(c);
+         }
      }
  }
  
@@ -24241,8 +24361,14 @@ index ed2bcf5..11583ad 100644
 +        else { if (!entry) break; c = entry->ctx; entry = entry->next; }
          if (!c) continue;
          if (spu_coh_holds(c, line)) {
-             SPU_EVENT_SET(c, SPU_EVENT_LR);
-@@ -395,6 +652,17 @@ void spu_coh_notify_write(uint32_t ea)
+-            SPU_EVENT_SET(c, SPU_EVENT_LR);
++            /* fix 145: resv_valid = 0 before the locked OR, so it is visible before spu_ch_wake reads lr_waiting */
+             __atomic_store_n(&c->resv_valid, 0, __ATOMIC_RELAXED);   /* reservation lost, PUTLLC must fail */
++            SPU_EVENT_SET(c, SPU_EVENT_LR);
+             /* SPU_PUTLLC_WHY=1: name the agent that killed it. A PUTLLC that
+              * always fails for "no reservation" is useless without knowing who
+              * took it away -- a peer SPU, or the PPU committing to the line. */
+@@ -395,6 +654,17 @@ void spu_coh_notify_write(uint32_t ea)
      }
  }
  
@@ -27017,10 +27143,10 @@ index 14c6425..e557b7d 100644
                                 uint64_t source, uint64_t data1,
                                 uint64_t data2,  uint64_t data3);
 diff --git a/runtime/syscalls/sys_ppu_thread.c b/runtime/syscalls/sys_ppu_thread.c
-index 41d5721..d8727d2 100644
+index 41d5721..8aac96e 100644
 --- a/runtime/syscalls/sys_ppu_thread.c
 +++ b/runtime/syscalls/sys_ppu_thread.c
-@@ -169,6 +169,175 @@ static void wait_first_block(const ppu_thread_info* t, uint64_t tid)
+@@ -169,6 +169,190 @@ static void wait_first_block(const ppu_thread_info* t, uint64_t tid)
              (unsigned long long)tid, t->name, t->priority, PRIO_START_TIMEOUT_MS);
  }
  
@@ -27143,6 +27269,21 @@ index 41d5721..d8727d2 100644
 +}
 +#endif
 +
++/* Demon's Souls NOTES fix 145: are the two hot cores reserved? Decides it now if no thread has asked yet. */
++int ps3_hot_cores_reserved(void);
++int ps3_hot_cores_reserved(void)
++{
++#ifdef _WIN32
++    AcquireSRWLockExclusive(&s_hot_lock);
++    if (!s_hot_state) s_hot_state = hot_init() ? 1 : -1;
++    const int on = s_hot_state > 0;
++    ReleaseSRWLockExclusive(&s_hot_lock);
++    return on;
++#else
++    return 0;
++#endif
++}
++
 +void ps3_hot_thread(int slot)
 +{
 +    if (slot < 0 || slot >= HOT_SLOTS) return;
@@ -27196,7 +27337,7 @@ index 41d5721..d8727d2 100644
  /* ---------------------------------------------------------------------------
   * Host thread entry point
   * -----------------------------------------------------------------------*/
-@@ -180,6 +349,8 @@ static void* ppu_host_thread_proc(void* param)
+@@ -180,6 +364,8 @@ static void* ppu_host_thread_proc(void* param)
  {
      ppu_thread_info* info = (ppu_thread_info*)param;
      ps3_thread_name("ppu %s", info->name);
@@ -27205,7 +27346,7 @@ index 41d5721..d8727d2 100644
  
  #ifdef _WIN32
      /* Reserve stack for the STACK_OVERFLOW handler, same as main() does for the
-@@ -269,6 +440,7 @@ static void* ppu_host_thread_proc(void* param)
+@@ -269,6 +455,7 @@ static void* ppu_host_thread_proc(void* param)
  
      /* Signal anyone waiting for join */
  #ifdef _WIN32
