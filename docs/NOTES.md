@@ -3281,6 +3281,20 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
        the rest of the picture as before. Two 120 s runs, no errors. The runtime patch's rsx_draw_engine.c
        section was regenerated; the whole patch applies under core.autocrlf false / true / input and gives the
        built files. Not checked: other areas, where the same overwrite may have changed blending.
+109. **The live renderer picks the high-performance GPU on two-GPU laptops (2026-11-11, GTX 1070 Max-Q laptop):**
+    - Report: the tutorial "crashed" in full screen on an i7-8750H + GTX 1070 Max-Q laptop whose screen is driven by
+      its Intel UHD 630 (Optimus). Perf log: ~36 fps while GPU-bound at 1x, then three PSO creations failing
+      (E_FAIL, device not removed), 8.5 fps, and a last 8.5 s fence wait: a GPU hang. Nothing named the GPU.
+    - Cause: rsx_live_draw.c created its device with D3D12CreateDevice(NULL): Windows' default adapter, on such a
+      laptop usually the integrated chip unless the exe is set to "High performance" in Windows' graphics settings.
+      rsx_d3d12_backend.c already asked for the high-performance adapter; the live renderer (the one in use) never did.
+    - Fix: IDXGIFactory6::EnumAdapterByGpuPreference(HIGH_PERFORMANCE), first non-software adapter that takes a
+      feature level 11_0 device; DES_GPU=integrated / LD_GPU=integrated asks for the low-power one; no
+      IDXGIFactory6 (Windows before 1803) falls back to the default adapter. Every run logs "[gpu] <name> (<MB> own
+      memory, vendor <id>)", so a report shows which GPU ran.
+    - Checked on the 7950X3D desktop, which also has two (RTX 4090 + the CPU's Radeon): default -> "[gpu] NVIDIA
+      GeForce RTX 4090", boss rush sandbox 60 fps; DES_GPU=integrated -> "[gpu] AMD Radeon(TM) Graphics", 60 fps,
+      no errors (a far newer chip than the laptop's UHD 630 with its 2018 driver). The laptop itself still to test.
 - **Test runs vs the user's game:** a test helper's `taskkill /F /IM DemonsSoulsRecomp.exe` killed the
   user's PLAY_DEMONS_SOULS.bat session (exit code 1). Test runs now live in DemonsSouls\testenv (own
   gamedata/saves and hdd0/hdd1, cwd there), end only their own process, run with AUDIO_MUTE=1,
