@@ -3377,6 +3377,45 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
 - Debug switches added this round: SPU_ATOM_EAS=\<ea,...> (per-task lock-line trace), SPURS_TASK_WATCH_ELF=\<hex>,
   LFQ_DBG also dumps the polled queue line.
 
+144. **Havok's SPU semaphore wait sleeps instead of spinning (2026-11-12, GTX 1070 Max-Q laptop, i7-8750H):**
+    - Laptop, Boletaria 1-1 start: "spu job" threads (SPU dispatcher + SPURS pool) at 215-244% of a core, 218% of it
+      user time. In game the CPU holds only \~2.5 GHz (idle 3.3-3.7; a firmware power limit: Windows reports no limit
+      flags), so every busy-waiting core costs every other thread clock.
+    - Profile (an outside sampler suspending the threads every \~1 ms, weighted by QueryThreadCycleTime, symbolised
+      against a /MAP relink of the exact exe): image 6 func_1781C <-> 178B8 = 11.5% of spu job cycles, almost all in
+      spu_rdch(SPU_RdEventStat) + the memcmp of spu_resv_lost_poll; the dispatcher (image 1) 39%.
+    - What it is (agent workflow, read-only): image 6 is Havok's hkpIntegrate SPU task (taskset 0x179ED800, run on
+      pooled "spu job" threads). When its job queue is empty it waits on a semaphore at queue+0x74 (low 16 bits =
+      count): GETLLAR the line, count 0 -> event mask 0x400 (Lr), rdch RdEventStat, ack, GETLLAR again. Released by
+      func_17638 (PUTLLC add + sys_spu_thread_send_event to wake PPU waiters). The same P() is in images 7 / 8
+      (hkpCollide / hkpCollisionQuery) and 9 (hkaSpu, anim sampling). On hardware that rdch stalls; here it returns
+      at once (SPU_CH_BLOCK off), so the task spun \~1 us passes for as long as the queue stayed empty.
+    - Fix (runtime/spu/spu_channels.c spu_rdch_lr_wait, called from the four lifted sites 0x178B8 / 0x11BF8 / 0x13F18 /
+      0xB538 via lifted-code.patch): when only Lr is enabled, a reservation is held and the line is unchanged, spin
+      50 us (SPU_LR_WAIT_SPIN_US), then sleep with WaitOnAddress on a new per-context lr_seq. The wake is the existing
+      one: every coherent writer (PPU store / stwcx., SPU PUTLLC / PUTLLUC / DMA PUT) raises Lr on the holder and
+      calls spu_ch_wake, which now bumps lr_seq when lr_waiting is set -- no lock (it runs under the lock-line lock).
+      Waiter: lr_waiting = 1, read lr_seq, check Lr / resv_valid / memcmp, sleep (all seq_cst), so a notify between
+      the check and the sleep changes lr_seq and WaitOnAddress returns at once. Writers that bypass the notifier:
+      memcmp re-poll every SPU_LR_WAIT_POLL_MS (1). Every wait ends by SPU_LR_WAIT_MAX_MS (16), so a task of a
+      shut-down taskset still reaches its next GETLLAR and halts. Then the normal spu_rdch runs: the guest sees the
+      same values. Image 9 off by default (SPU_LR_WAIT_IMG9=1): HighGraphics waits on the anim tasks every frame.
+      Off under SPU_LOCKSTEP. SPU_LR_WAIT=0 = old spin. SPU_LR_WAIT_STATS=1 = "[lr-wait]" every 5 s per image
+      (how waits ended, length histogram, wake latency after a notify).
+    - Result (laptop, test copy of the save, DES_WARP_AT=140:2,0,999, stand / walk / camera spin, 72 fps mode, 60 s
+      cool-down before every run; 3 runs on, 5 off): spu job 176-197% (on) vs 215-244% (off), process 492-534 vs
+      534-583, i.e. \~0.4 of a core less. fps 28-34 vs 30-35, within run-to-run noise; CPU clock unchanged
+      (2.52 vs 2.47-2.57 GHz: the spin was mostly PAUSE, which costs little power); synth2 still at its ceiling
+      (93-96% walking). Image 6: 110-146 waits/s, 85-90% of them 1-5 ms long, woken by notify (re-poll \~0-2 per 5 s,
+      cap 0), wake latency mean 14-27 us. Images 7 / 8 did not wait on this route. Same warning lines in the log as
+      with SPU_LR_WAIT=0 (one [spu-spin] img=2, 16 shut-down-taskset stops).
+    - Reviewed by an agent workflow (design + 2 adversarial reviews, then 3 review lenses on the diff with each
+      finding verified): the reviewers' changes are in (no lock in the waker; claim-once settings; stats tied to
+      the bump that woke the wait; PS3_FTRACE logs the whole wait as one SPU_WAIT span). Known: SPU_IDLE_STATS now
+      counts these waits as work, not idle.
+    - Next on this laptop: the dispatcher (image 1, 39% of spu job): it acks with 0, so Lr stays set and its idle
+      loop never pauses; a sleeping idle wait there needs the same care plus an fps A/B (HighGraphics hand-off).
+
 ### Where it stands (2026-10-27)
 New game -> Create Profile -> tutorial loads, the opening cutscene plays and gameplay renders the corridor
 with the player at the game's own auto-exposure (fix 21) and full sharpness and fog (fix 22). Open problems:

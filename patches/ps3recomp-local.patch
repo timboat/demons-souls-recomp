@@ -22464,7 +22464,7 @@ index 4b7df8c..672babc 100644
 +
  #endif /* PS3_LOG_H */
 diff --git a/runtime/spu/spu_channels.c b/runtime/spu/spu_channels.c
-index 5fc5020..04af81f 100644
+index 5fc5020..9d9df9b 100644
 --- a/runtime/spu/spu_channels.c
 +++ b/runtime/spu/spu_channels.c
 @@ -57,6 +57,9 @@ static uint64_t spu_host_ns(void)
@@ -23453,7 +23453,192 @@ index 5fc5020..04af81f 100644
          SPU_EVENT_SET(ctx, 0x400u);
      }
  }
-@@ -1234,6 +1668,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1152,6 +1586,14 @@ static int spu_ch_ready(spu_context* ctx, uint32_t channel)
+ void spu_ch_wake(spu_context* ctx)
+ {
+     if (!ctx) return;
++    /* fix 144: a spu_rdch_lr_wait sleeper waits on lr_seq. Bump it after the producer's (seq_cst)
++     * event store and wake it -- never a lock the waiter holds (this runs under the lock-line lock). The flag is only
++     * ever set by that wait, so for every other producer and title this is one extra load. */
++    if (__atomic_load_n(&ctx->lr_waiting, __ATOMIC_SEQ_CST)) {
++        __atomic_store_n(&ctx->lr_notify_ns, spu_host_ns(), __ATOMIC_RELAXED);
++        __atomic_fetch_add(&ctx->lr_seq, 1, __ATOMIC_SEQ_CST);
++        WakeByAddressAll((void*)&ctx->lr_seq);
++    }
+     WakeAllConditionVariable((CONDITION_VARIABLE*)&ctx->ch_wait_cv);
+ }
+ 
+@@ -1217,6 +1659,169 @@ static void spu_ch_wait(spu_context* ctx, uint32_t channel, const char* op)
+     ctx->status = SPU_STATUS_RUNNING;
+ }
+ 
++/* ===========================================================================
++ * Demon's Souls NOTES fix 144: a real wait for a lost reservation.
++ * On hardware `rdch SPU_RdEventStat` stalls while only Lr (0x400) is enabled and none is pending.
++ * Here it returns at once (SPU_CH_BLOCK off), so Havok's job-queue semaphore P() -- images 6 / 7 / 8
++ * (0x178B8, 0x11BF8, 0x13F18), and 9 (0xB538, anim sampling, opt-in) -- spun GETLLAR + memcmp +
++ * 16 pauses + ack about once a microsecond: 11.5% of the "spu job" threads' cycles at Boletaria 1-1
++ * on a 6-core laptop. Only those lifted sites call this (patches/lifted-code.patch).
++ * Spin SPU_LR_WAIT_SPIN_US (default 50) first, then sleep on lr_seq with WaitOnAddress. The wake is
++ * the existing one: every coherent writer of the line (PPU store / stwcx., SPU PUTLLC / PUTLLUC /
++ * DMA PUT) raises Lr on the holder and calls spu_ch_wake, which bumps lr_seq when lr_waiting is set
++ * -- no lock taken there (it runs under the lock-line lock). Lost-wake proof: the waiter sets
++ * lr_waiting, THEN reads lr_seq, THEN checks Lr (all seq_cst); a producer sets Lr, THEN reads
++ * lr_waiting. If the waiter's check missed Lr, the producer saw lr_waiting = 1 and bumped lr_seq after
++ * the waiter read it, so WaitOnAddress returns at once. A writer that bypasses the notifier is caught
++ * by the memcmp re-poll every SPU_LR_WAIT_POLL_MS (1); A-B-A is harmless for a semaphore (same bytes =
++ * count still 0). The reservation stays published while asleep (fix 111). Every wait ends after
++ * SPU_LR_WAIT_MAX_MS (16) at the latest, so a task of a shut-down taskset reaches its next GETLLAR
++ * and halts there. Then spu_rdch runs exactly as before, so the guest sees the same values.
++ * SPU_LR_WAIT=0 = old behaviour; SPU_LR_WAIT_IMG9=1 = also image 9 (HighGraphics waits on it every
++ * frame: wake latency lands on the critical path); SPU_LR_WAIT_STATS=1 = an [lr-wait] line every
++ * 5 s per site (wait-length histogram, how waits ended, wake latency after a notify).
++ * Off under SPU_LOCKSTEP (the spin would hold the run token).
++ * ===========================================================================*/
++#ifdef _WIN32
++#pragma comment(lib, "synchronization.lib")   /* WaitOnAddress / WakeByAddressAll */
++#endif
++static volatile int s_lrw_state;               /* 0 = not read yet, 1 = off, 2 = on, 3 = being read */
++static int s_lrw_img9, s_lrw_stats;
++static uint64_t s_lrw_spin_ns, s_lrw_max_ns;
++static DWORD s_lrw_poll_ms;
++
++static SPU_NOINLINE_COLD void spu_lrw_cfg(void)
++{
++    const char* e = getenv("SPU_LR_WAIT_SPIN_US");
++    int us = e ? atoi(e) : 50;
++    if (us < 0) us = 0;
++    e = getenv("SPU_LR_WAIT_MAX_MS");
++    int mx = (e && atoi(e) > 0) ? atoi(e) : 16;
++    if (mx > 1000) mx = 1000;
++    if (us > mx * 1000) us = mx * 1000;
++    e = getenv("SPU_LR_WAIT_POLL_MS");
++    int pm = (e && atoi(e) > 0) ? atoi(e) : 1;
++    if (pm > mx) pm = mx;
++    s_lrw_spin_ns = (uint64_t)us * 1000u;
++    s_lrw_max_ns  = (uint64_t)mx * 1000000u;
++    s_lrw_poll_ms = (DWORD)pm;
++    s_lrw_img9  = getenv("SPU_LR_WAIT_IMG9") && getenv("SPU_LR_WAIT_IMG9")[0] == '1';
++    s_lrw_stats = getenv("SPU_LR_WAIT_STATS") ? 1 : 0;
++    e = getenv("SPU_LR_WAIT");
++    const int on = !(e && e[0] == '0');
++    fprintf(stderr, "[lr-wait] fix 144 %s: spin %d us, poll %d ms, cap %d ms, image 9 %s\n",
++            on ? "on" : "off (SPU_LR_WAIT=0)", us, pm, mx, s_lrw_img9 ? "on" : "off");
++    __atomic_store_n(&s_lrw_state, on ? 2 : 1, __ATOMIC_RELEASE);
++}
++
++/* Has the wait ended? Reads only: the spu_rdch that follows does the bookkeeping. */
++static inline int spu_lrw_done(spu_context* ctx)
++{
++    if (__atomic_load_n(&ctx->event_status, __ATOMIC_SEQ_CST) & 0x400u) return 1;
++    if (!__atomic_load_n(&ctx->resv_valid, __ATOMIC_SEQ_CST)) return 1;
++    if (ctx->stop_request) return 1;
++    return memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0;
++}
++
++/* Stats per site (0-3 = images 6-9). how: 0 ended while spinning, 1 notify, 2 re-poll saw the
++ * line change (a writer that bypasses the notifier), 3 cap / stop. */
++enum { LRW_SITES = 4, LRW_BUCKETS = 7 };
++static const uint64_t s_lrw_edge_us[LRW_BUCKETS - 1] = { 10, 50, 200, 1000, 5000, 16000 };
++static volatile long long s_lrw_n[LRW_SITES][4], s_lrw_hist[LRW_SITES][LRW_BUCKETS];
++static volatile long long s_lrw_lat_n[LRW_SITES], s_lrw_lat_ns[LRW_SITES], s_lrw_lat_hi[LRW_SITES];
++static volatile uint64_t s_lrw_t0;
++
++static SPU_NOINLINE_COLD void spu_lrw_note(int site, int how, uint64_t wait_ns, int64_t lat_ns)
++{
++    int b = 0;
++    while (b < LRW_BUCKETS - 1 && wait_ns >= s_lrw_edge_us[b] * 1000u) b++;
++    __atomic_fetch_add(&s_lrw_n[site][how], 1, __ATOMIC_RELAXED);
++    __atomic_fetch_add(&s_lrw_hist[site][b], 1, __ATOMIC_RELAXED);
++    if (lat_ns >= 0) {
++        __atomic_fetch_add(&s_lrw_lat_n[site], 1, __ATOMIC_RELAXED);
++        __atomic_fetch_add(&s_lrw_lat_ns[site], lat_ns, __ATOMIC_RELAXED);
++        if (lat_ns >= 200000) __atomic_fetch_add(&s_lrw_lat_hi[site], 1, __ATOMIC_RELAXED);
++    }
++    const uint64_t now = spu_host_ns();
++    uint64_t w = __atomic_load_n(&s_lrw_t0, __ATOMIC_RELAXED);
++    if (!w) { __atomic_compare_exchange_n(&s_lrw_t0, &w, now, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED); return; }
++    if (now - w < 5000000000ull ||
++        !__atomic_compare_exchange_n(&s_lrw_t0, &w, now, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) return;
++    const double s = (double)(now - w) / 1e9;
++    for (int i = 0; i < LRW_SITES; i++) {
++        long long n[4], h[LRW_BUCKETS], tot = 0;
++        for (int k = 0; k < 4; k++) { n[k] = __atomic_exchange_n(&s_lrw_n[i][k], 0, __ATOMIC_RELAXED); tot += n[k]; }
++        for (int k = 0; k < LRW_BUCKETS; k++) h[k] = __atomic_exchange_n(&s_lrw_hist[i][k], 0, __ATOMIC_RELAXED);
++        const long long ln = __atomic_exchange_n(&s_lrw_lat_n[i], 0, __ATOMIC_RELAXED),
++                        lt = __atomic_exchange_n(&s_lrw_lat_ns[i], 0, __ATOMIC_RELAXED),
++                        lh = __atomic_exchange_n(&s_lrw_lat_hi[i], 0, __ATOMIC_RELAXED);
++        if (!tot) continue;
++        fprintf(stderr, "[lr-wait] img%d: %.0f waits/s, ended spinning %.0f / notify %.0f / re-poll %.0f / cap %.0f; "
++                "length <10us %lld <50 %lld <200 %lld <1ms %lld <5ms %lld <16ms %lld more %lld; "
++                "wake latency mean %.0f us, %lld over 200 us\n",
++                i + 6, tot / s, n[0] / s, n[1] / s, n[2] / s, n[3] / s,
++                h[0], h[1], h[2], h[3], h[4], h[5], h[6], ln ? (double)lt / 1000.0 / (double)ln : 0.0, lh);
++    }
++}
++
++u128 spu_rdch(spu_context* ctx, uint32_t channel);
++u128 spu_rdch_lr_wait(spu_context* ctx, int site);
++u128 spu_rdch_lr_wait(spu_context* ctx, int site)
++{
++    int st = __atomic_load_n(&s_lrw_state, __ATOMIC_ACQUIRE);
++    if (st == 0 || st == 3) {   /* one thread reads the settings; the others wait for it (3 = being read) */
++        int expect = 0;
++        if (st == 0 && __atomic_compare_exchange_n(&s_lrw_state, &expect, 3, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
++            spu_lrw_cfg();
++        while ((st = __atomic_load_n(&s_lrw_state, __ATOMIC_ACQUIRE)) == 0 || st == 3) YieldProcessor();
++    }
++    if (st == 2 && (site != 3 || s_lrw_img9) && site >= 0 && site < LRW_SITES && !yz_lockstep_enabled() &&
++        ctx->event_mask == 0x400u && ctx->resv_valid && vm_base && ctx->resv_ea && !spu_lrw_done(ctx)) {
++        const uint64_t t0 = spu_host_ns();
++        const uint64_t ft_t0 = PS3_FT_ON() ? ps3_ft_now() : 0;
++        int how = 0;
++        for (;;) {   /* spin */
++            for (int k = 0; k < 16; k++) YieldProcessor();
++            if (spu_lrw_done(ctx)) break;
++            if (spu_host_ns() - t0 >= s_lrw_spin_ns) { how = -1; break; }
++        }
++        int64_t lat = -1;
++        if (how < 0) {   /* sleep */
++            int bumped = 0;
++            uint64_t ts = 0;
++            __atomic_store_n(&ctx->lr_waiting, 1, __ATOMIC_SEQ_CST);
++            for (;;) {
++                const long seq = __atomic_load_n(&ctx->lr_seq, __ATOMIC_SEQ_CST);
++                if (spu_lrw_done(ctx)) break;
++                if (spu_host_ns() - t0 >= s_lrw_max_ns) break;
++                ts = spu_host_ns();
++                WaitOnAddress((volatile void*)&ctx->lr_seq, (void*)&seq, sizeof seq, s_lrw_poll_ms);
++                bumped = __atomic_load_n(&ctx->lr_seq, __ATOMIC_SEQ_CST) != seq;
++            }
++            __atomic_store_n(&ctx->lr_waiting, 0, __ATOMIC_SEQ_CST);
++            if (s_lrw_stats) {
++                /* notify = woken by a bump during this wait's last sleep; its latency only from that bump's stamp */
++                const uint64_t now = spu_host_ns(), nt = __atomic_load_n(&ctx->lr_notify_ns, __ATOMIC_ACQUIRE);
++                const int lr = (__atomic_load_n(&ctx->event_status, __ATOMIC_RELAXED) & 0x400u) || !ctx->resv_valid;
++                if (lr && bumped) {
++                    how = 1;
++                    if (nt >= ts && nt <= now) lat = (int64_t)(now - nt);
++                } else if (lr || memcmp(vm_base + ctx->resv_ea, ctx->resv_line, 128) != 0) how = 2;
++                else how = 3;
++            }
++        }
++        /* PS3_FTRACE: the whole wait (spin + sleep) as one SPU_WAIT span at this pc. Not spu_ft_wait_span,
++         * which would start BUSY-span tracking on threads that otherwise never block. */
++        if (ft_t0) {
++            const uint64_t ft_t1 = ps3_ft_now();
++            if (ft_t1 - ft_t0 >= ps3_ft_min_ns())
++                ps3_ft_span(PS3_FT_SPU_WAIT, ctx->spu_id, SPU_RdEventStat, ctx->pc & SPU_LS_MASK, ft_t0, ft_t1);
++        }
++        if (s_lrw_stats) spu_lrw_note(site, how < 0 ? 3 : how, spu_host_ns() - t0, lat);
++    }
++    return spu_rdch(ctx, SPU_RdEventStat);   /* unchanged: stop request, Lr poll, idle pause, value */
++}
++
+ /* ===========================================================================
+  * Channel read (returns value in the preferred word slot)
+  * ===========================================================================*/
+@@ -1234,6 +1839,40 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
       * raise above), but only block it when the SPU has actually enabled events
       * (event_mask != 0) -- a masked-off read must return 0 immediately, not
       * park forever. RdInMbox/RdSigNotify park on their PPU producers. */
@@ -23494,7 +23679,7 @@ index 5fc5020..04af81f 100644
      if (channel == SPU_RdInMbox || channel == SPU_RdSigNotify1 || channel == SPU_RdSigNotify2)
          spu_ch_wait(ctx, channel, "rdch");
      else if (channel == SPU_RdEventStat && ctx->event_mask != 0)
-@@ -1298,7 +1766,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
+@@ -1298,7 +1937,20 @@ u128 spu_rdch(spu_context* ctx, uint32_t channel)
          break;
      }
      case SPU_RdEventMask:   v = ctx->event_mask;                        break;
@@ -23516,7 +23701,7 @@ index 5fc5020..04af81f 100644
      /* CBEA 9.8: numeric bit 0 is interrupt-enable, independent of run status.
       * This runtime models nonisolated SPUs, so the isolation bit stays clear. */
      case SPU_RdMachStat:    v = ctx->int_enable & 1u; break;
-@@ -1887,14 +2368,35 @@ static int spu_ovl_ea_known(uint32_t ea)
+@@ -1887,14 +2539,35 @@ static int spu_ovl_ea_known(uint32_t ea)
      return 1;   /* full (cannot happen): never filter */
  }
  
@@ -23553,7 +23738,7 @@ index 5fc5020..04af81f 100644
      }
  }
  
-@@ -2067,11 +2569,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
+@@ -2067,11 +2740,13 @@ static int spu_taskset_resident_image(const spu_context* ctx)
  void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
  {
      if (s_ovl_src_count < SPU_OVL_SRC_MAX) {
@@ -23568,7 +23753,7 @@ index 5fc5020..04af81f 100644
      }
  }
  
-@@ -2083,13 +2587,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
+@@ -2083,13 +2758,14 @@ void spu_overlay_register_sig(const uint8_t sig[16], int image_id)
   * keeps in its own data can be lifted. A body larger than one DMA arrives as
   * consecutive GETs (contiguous EA and LS); those are appended to the same
   * file. One file per source EA: ovl_<ea>.bin. */
@@ -23587,7 +23772,7 @@ index 5fc5020..04af81f 100644
      static uint32_t s_seen[256]; static unsigned s_n;
      static SPU_TLS uint32_t t_src, t_next_ea, t_next_lsa;
      FILE* f = NULL; char path[512];
-@@ -2115,7 +2620,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
+@@ -2115,7 +2791,9 @@ static void spu_ovl_dump(spu_context* ctx, uint32_t ea, uint32_t lsa, const uint
  void spu_lockguard_check(spu_context* ctx, uint32_t ea, const uint8_t* src, uint32_t size, const char* what)
  {
      static int64_t s_g = -2;
@@ -23598,7 +23783,7 @@ index 5fc5020..04af81f 100644
      if (s_g < 0 || !vm_base) return;
      uint32_t g = (uint32_t)s_g;
      if (g < ea || g + 4 > ea + size) return;
-@@ -2148,6 +2655,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
+@@ -2148,6 +2826,7 @@ void spu_overlay_note_get(spu_context* ctx, uint32_t ea, const uint8_t* ls, uint
          }
      }
      int nsrc = __atomic_load_n(&s_ovl_src_count, __ATOMIC_ACQUIRE);
@@ -23606,7 +23791,7 @@ index 5fc5020..04af81f 100644
      if (size < 512 && !spu_ovl_ea_known(ea)) return;
      for (int i = 0; i < nsrc; i++) {
          const spu_ovl_src* o = &s_ovl_src[i];
-@@ -2275,9 +2783,8 @@ void spu_spurs_taskset_syscall(spu_context* ctx)   /* non-static: also called by
+@@ -2275,9 +2954,8 @@ void spu_spurs_taskset_syscall(spu_context* ctx)   /* non-static: also called by
       * the real task entry -- so image 22 cannot halt on the first one. But a task
       * that has since done work and calls EXIT again means it: returning there makes
       * it re-enter and spin (observed: 6x num=0 from link 0x26E18 once the task is
@@ -23618,7 +23803,7 @@ index 5fc5020..04af81f 100644
      if (num == 0 && ctx->image_id == 22 && !getenv("YDKJ_CRI_EXIT_HALT")) {
          if (s_exit_seen++ == 0) { ctx->gpr[3]._u32[0] = 0; return; }   /* bootstrap */
          { static int _n = 0; if (PS3_LOG_FIRST(_n, 8))
-@@ -3316,4 +3823,15 @@ void spu_trace_rt(spu_context* ctx, uint32_t rt)
+@@ -3316,4 +3994,15 @@ void spu_trace_rt(spu_context* ctx, uint32_t rt)
  
  #ifdef __cplusplus
  }
@@ -24116,7 +24301,7 @@ index ea2e835..1abcb02 100644
  /* Scoped host waiters for real writes to a guest 128-byte line. Add, remove,
   * and callbacks all run under the lock-line lock. A watch remains caller-owned
 diff --git a/runtime/spu/spu_context.h b/runtime/spu/spu_context.h
-index c5ccbec..8aceb65 100644
+index c5ccbec..d2bc7bb 100644
 --- a/runtime/spu/spu_context.h
 +++ b/runtime/spu/spu_context.h
 @@ -16,6 +16,9 @@
@@ -24129,7 +24314,7 @@ index c5ccbec..8aceb65 100644
  
  #ifdef __cplusplus
  extern "C" {
-@@ -425,6 +428,11 @@ typedef struct spu_context {
+@@ -425,6 +428,20 @@ typedef struct spu_context {
       * spu_coh_reserve_fast). Written under that lock, read by the context's
       * own thread. */
      int coh_listed;
@@ -24138,10 +24323,19 @@ index c5ccbec..8aceb65 100644
 +     * fix 67). Written under the lock-line lock when the context is listed or dropped; the context's
 +     * own thread publishes its reserved line in that slot. */
 +    int coh_slot;
++
++    /* Demon's Souls NOTES fix 144: a real wait for a lost reservation (spu_rdch_lr_wait,
++     * spu_channels.c). lr_waiting is nonzero while that wait sleeps on lr_seq (WaitOnAddress);
++     * spu_ch_wake then bumps lr_seq and wakes it, without taking any lock (it runs under the
++     * lock-line lock). lr_notify_ns = when it did, for the wake-latency stats. Zero elsewhere
++     * (spu_context_init memsets the context); at the end so no other offset moves. */
++    volatile int      lr_waiting;
++    volatile long     lr_seq;
++    volatile uint64_t lr_notify_ns;
  } spu_context;
  
  /* event_status is written from more than one host thread: the SPU's own
-@@ -774,10 +782,19 @@ static inline uint64_t spu_preferred_u64(const u128* reg)
+@@ -774,10 +791,19 @@ static inline uint64_t spu_preferred_u64(const u128* reg)
  /* Create a register with a value splatted to the preferred word slot */
  static inline u128 spu_make_preferred_u32(uint32_t val)
  {
@@ -24161,7 +24355,7 @@ index c5ccbec..8aceb65 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -860,6 +877,9 @@ static inline int spu_channel_has_data(const spu_channel* ch)
+@@ -860,6 +886,9 @@ static inline int spu_channel_has_data(const spu_channel* ch)
  #else
  #  define SPU_THREAD_LOCAL __thread
  #endif

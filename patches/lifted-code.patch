@@ -4701,6 +4701,62 @@ diff -ruN a/spu/spu_0001_at_0176C200/spu_recomp.c b/spu/spu_0001_at_0176C200/spu
 +    ctx->pc = 0x4808; g_spu_trampoline_fn = spu_0001_at_0176C200_spu_func_00004808;
 +    return 1;
 +}
+diff -ruN a/spu/spu_0006_at_017AE200/spu_recomp.c b/spu/spu_0006_at_017AE200/spu_recomp.c
+--- a/spu/spu_0006_at_017AE200/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
++++ b/spu/spu_0006_at_017AE200/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
+@@ -24010,7 +24010,9 @@ loc_0001781C:
+ }
+ 
+ void spu_0006_at_017AE200_spu_func_000178B8(spu_context* ctx) {
+-        ctx->gpr[28] = spu_rdch(ctx, SPU_RdEventStat);
++        /* DeS fix 144: Havok semaphore P() -- wait for the line to change instead of spinning */
++        { extern u128 spu_rdch_lr_wait(spu_context*, int);
++          ctx->gpr[28] = spu_rdch_lr_wait(ctx, 0); }
+         spu_wrch(ctx, SPU_WrEventAck, ctx->gpr[28]);
+         { SPU_DIRECT(ctx, 0x1781C, spu_0006_at_017AE200_spu_func_0001781C); }
+ }
+diff -ruN a/spu/spu_0007_at_017C5900/spu_recomp.c b/spu/spu_0007_at_017C5900/spu_recomp.c
+--- a/spu/spu_0007_at_017C5900/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
++++ b/spu/spu_0007_at_017C5900/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
+@@ -17622,7 +17622,9 @@ loc_00011B5C:
+ }
+ 
+ void spu_0007_at_017C5900_spu_func_00011BF8(spu_context* ctx) {
+-        ctx->gpr[28] = spu_rdch(ctx, SPU_RdEventStat);
++        /* DeS fix 144: Havok semaphore P() -- wait for the line to change instead of spinning */
++        { extern u128 spu_rdch_lr_wait(spu_context*, int);
++          ctx->gpr[28] = spu_rdch_lr_wait(ctx, 1); }
+         spu_wrch(ctx, SPU_WrEventAck, ctx->gpr[28]);
+         { SPU_DIRECT(ctx, 0x11B5C, spu_0007_at_017C5900_spu_func_00011B5C); }
+ }
+diff -ruN a/spu/spu_0008_at_017E9A00/spu_recomp.c b/spu/spu_0008_at_017E9A00/spu_recomp.c
+--- a/spu/spu_0008_at_017E9A00/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
++++ b/spu/spu_0008_at_017E9A00/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
+@@ -20029,7 +20029,9 @@ loc_00013E7C:
+ }
+ 
+ void spu_0008_at_017E9A00_spu_func_00013F18(spu_context* ctx) {
+-        ctx->gpr[28] = spu_rdch(ctx, SPU_RdEventStat);
++        /* DeS fix 144: Havok semaphore P() -- wait for the line to change instead of spinning */
++        { extern u128 spu_rdch_lr_wait(spu_context*, int);
++          ctx->gpr[28] = spu_rdch_lr_wait(ctx, 2); }
+         spu_wrch(ctx, SPU_WrEventAck, ctx->gpr[28]);
+         { SPU_DIRECT(ctx, 0x13E7C, spu_0008_at_017E9A00_spu_func_00013E7C); }
+ }
+diff -ruN a/spu/spu_0009_at_0180C600/spu_recomp.c b/spu/spu_0009_at_0180C600/spu_recomp.c
+--- a/spu/spu_0009_at_0180C600/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
++++ b/spu/spu_0009_at_0180C600/spu_recomp.c	2026-11-12 00:00:00.000000000 -0700
+@@ -10109,7 +10109,9 @@ loc_0000B49C:
+ }
+ 
+ void spu_0009_at_0180C600_spu_func_0000B538(spu_context* ctx) {
+-        ctx->gpr[28] = spu_rdch(ctx, SPU_RdEventStat);
++        /* DeS fix 144: Havok semaphore P() -- wait for the line to change instead of spinning */
++        { extern u128 spu_rdch_lr_wait(spu_context*, int);
++          ctx->gpr[28] = spu_rdch_lr_wait(ctx, 3); }
+         spu_wrch(ctx, SPU_WrEventAck, ctx->gpr[28]);
+         { SPU_DIRECT(ctx, 0xB49C, spu_0009_at_0180C600_spu_func_0000B49C); }
+ }
 diff -ruN a/spu/spu_0010_at_01818080/spu_recomp.c b/spu/spu_0010_at_01818080/spu_recomp.c
 --- a/spu/spu_0010_at_01818080/spu_recomp.c	2026-11-11 19:48:26.310050500 -0700
 +++ b/spu/spu_0010_at_01818080/spu_recomp.c	2026-11-11 19:48:26.311051100 -0700
