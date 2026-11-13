@@ -3530,6 +3530,46 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
     - Checked at 1-1: the stone floor shows clearly more detail at a distance, HUD identical; 59.5 vs 59.2 fps at
       the 60 cap on the RTX 3070 (no measurable cost there). A launcher option is the main rig's (launcher) side.
 
+150. **Branch dispq-batch, opt-in: the SPU dispatcher takes the rest of a fetched queue line without re-reserving
+     (DES_DISPQ_BATCH=1); 1-1 walk 24.7 -> 29.2 real pictures a second with frame skip off (2026-11-12, GTX 1070
+     Max-Q laptop, i7-8750H):**
+    - Correction to fix 145: with frame skip off the frame is HighGraphics' own work (\~26-30 ms) plus its 0x9023
+      poll (11-16 ms), and the poll is dispatcher time (the dispatcher is busy without a break until the reply; two
+      new skip-off timelines). The "\~34 ms of HighGraphics CPU" there included the poll spin. The cond_wait at
+      0xB5D65C is a PPU chain (ChrInsManThread \~7, main \~7, Havok PPU \~3 ms), not the SPU anim tasks.
+    - Per command the native loop (fix 112) still did a GETLLAR of the control line 0x01B51080 (LS 0x13480), the
+      compare, fix 111's no-op PUTLLC and a 128-byte GET of the entry line. HighGraphics writes an entry, syncs, then
+      moves the producer, and a slot below the producer stays as written until the cursor passes it, so every entry
+      in the fetched line below the producer that GETLLAR saw is already in hand.
+    - Change (lifted-code.patch, spu_0001_at_0176C200 des_dispq_native, branch only): after a full pass the loop
+      keeps that line; while the cursor is inside it, at or past the first entry taken and below the producer seen,
+      and LS 0x13480 / r82 / r85 are untouched, the next pass skips the GETLLAR, the PUTLLC and the GET (atomic stat
+      4 / 0 as they would leave it, the kept line copied to LS as the GET would) and runs everything else as before
+      -- the 3C90 bookkeeping, the per-command cursor PUT, the handlers. Any hand-off (another command than 7 / 8,
+      the burst limit, 3C90's rare branches, an empty queue) ends it; its state is des_dispq_native's locals.
+      DES_DISPQ_BATCH=1 on, 2 = skip only the GETLLAR / PUTLLC, 3 = verify (run everything, compare each entry the
+      batch would have taken with the fetched one), unset / 0 = the old loop exactly. DES_DISPQ_BATCH_STATS=1.
+    - Verify mode at 1-1 (two runs, 205 s, the second with the window opened after empty-queue wakes too): 104 M and
+      95 M entries compared, 0 mismatches; 70.7% of passes take the batch.
+    - A/B (same exe, frame skip off, PS3_FTRACE runs, 4 pairs in alternating order, walk window): on 29.4 / 29.7 /
+      28.3 / 29.3 vs off 25.4 / 27.1 / 21.9 / 24.5 real pictures a second, game time 0.94-0.96 vs 0.73-0.90, 95th
+      percentile gap 43-46 vs 47-56 ms; 0x9023 poll 7.3-8.5 vs 11.3-16.1 ms a frame (21-23% vs 28-33% of it).
+      HighGraphics' own time a frame also falls a little (fewer reservations on the line it stores to, fix 90). An
+      earlier 3 + 3 untraced batch was inside the noise (24.8 vs 24.1); the poll share is the steadier measure here.
+    - Review (3 lenses + refuters): protocol none; fixed: verify mode missed the post-wake window, mode 0 bumped a
+      counter. Refuted: halting a shut-down taskset later (Join waits for the task; the window existed before). A
+      guard on g_spu_tasksets_down was tried and removed: that count stays non-zero in play, so it disabled the
+      batch. Noted: in mode 1 the cursor PUTs run back to back, so keep SPU_DMA_REPEAT_LIMIT above 7 (default 256).
+    - Tour (god mode, warps every 70 s: Boletaria 2,0,999 > Shrine 3,1,999 > Latria 4,0,998 (4-1 then 4-2) > Valley
+      5,0,999 > Stonefang 6,0,999 > the Nexus 1,0,999; a 10 s camera pan and a 10 s walk at each stop; 570 s runs):
+      verify mode with frame skip on 187 M entries compared, 0 mismatches, 70% batched; mode 1 with frame skip off
+      and on, and mode 0 both ways: every map reached, no HALT / [dispq] lines, screenshots at each stop render
+      normally. Per-stop fps is not comparable across runs (arrival views differ, e.g. 361 vs 910 draws at 1-1);
+      the 1-1 pairs above are the measurement.
+    - Measured on main c18e241 (fix 145); rebased onto 08867e3 (fixes 146-149, 201) without a new build -- lifted-code.patch
+      did not change there, selftest_patches ok.
+    - Not yet: other PCs (the 3070 / desktop at Latria 4-2, the uncapped benchmark); then it can be offered as a setting.
+
 ### Where it stands (2026-10-27)
 New game -> Create Profile -> tutorial loads, the opening cutscene plays and gameplay renders the corridor
 with the player at the game's own auto-exposure (fix 21) and full sharpness and fog (fix 22). Open problems:
