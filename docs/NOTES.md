@@ -3470,6 +3470,59 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       inside the noise; synth2 unchanged. A one-slot fix 132 for 6-7 core CPUs would need more runs first.
     - 60 at 1-1 on this laptop would need HighGraphics' own frame (\~34 ms) about halved; fixes 144 / 145 free CPU
       (\~0.6 core together) but this CPU's clock is held by heat / power, not by how many cores are busy.
+146. **Cube maps read with the RSX's face stride: full mip chain per face, 128-byte aligned (2026-11-12, GitHub #24):**
+    - #24: with the PC Remaster mod the character creator's textures are garbled. The desktop found the
+      mechanism: the mod sets g_LightingType 3 on player materials, which samples the env-specular cube
+      (EnvSpc_m99_000 in the menu scene: 64x64 ARGB, 7 levels, chain 21844 bytes).
+    - Cause (libs/video/rsx_live_draw.c): faces were read back to back at total / 6, and the DXT path also cut the
+      chain at 4x4 before sizing a face. The RSX stores each face as the FULL declared chain and starts every face on
+      a 128-byte boundary (disc TPFs: 5 * align128(chain) + chain). rsx_texture_cube_face_stride already said so for
+      rsx_draw_engine and the Metal backend.
+    - Fix: ld_cube_face_stride (that helper) for both cube decode paths, and texture_source_span covers 5 strides +
+      the last face's chain (never less than before). 0 (no layout for the format) keeps the old reading.
+      LD_CUBE_LOG=1 prints each cube's old and new face stride once.
+    - Checked on the vanilla game (1-1): 128x128 DXT1, 8 levels: 10920 -> 11008; 32x32 DXT1, 6 levels: 680 -> 768;
+      32x32 ARGB, 1 level: unchanged. A raw dump of the 128x128 cube is 65976 bytes = 5 * 11008 + 10920; decoded
+      offline, faces 1-5 at the old stride start early (a stripe of the previous face's mips on top, picture shifted),
+      at the new stride they are clean. Vanilla shiny surfaces were subtly off too.
+    - Not yet checked: the Remaster mod's character creator itself (the mod isn't installed on the 3070 PC).
+147. **A full diagonal on an Xbox pad jogs: radial stick deadzone (2026-11-12, GitHub #42, #43, #22):**
+    - Report: on an XInput pad a full push off the straight line walks; the keyboard's W+D jogs.
+    - Cause (libs/input/cellPad.c): the 24% deadzone (7849) and its rescale were applied to each axis on its own, so
+      a full 45-degree push read (206, 50) -- magnitude 0.865. The game takes sqrt(x^2 + y^2) through its own 0.37
+      radial deadzone (func_001C3000).
+    - Measured in the game (1-1, PAD_STICK_SEQ holds of 3 s, mirrored so the player goes back and forth;
+      DES_WHERE=0.1, median speed per hold): walk vs jog is a switch, not a slope -- walking ~1.7 m/s, jogging
+      ~3.8 m/s. Threshold: a stick magnitude of ~0.945 ((b - 127.5) / 127.5 per axis): 128,8 walks, 128,7 and
+      128,248 jog; 218,38, 214,42 and 216,40 (diagonals) jog; 206,50, 212,44, 200,56 and 128,20 walk.
+    - Fix: pad_xinput_stick treats each stick as one vector: radial deadzone, the rest rescaled along the stick's
+      direction, a push 0.95 out or more counts as full (PAD_STICK_OUTER=<0.5-1> changes that, for round gates
+      that stop short on a diagonal). Y is still reflected about 128 (256 - v), so a centred stick is never 127.
+    - Checked (the function on its own): a full push jogs in all 3600 directions tested (the old mapping walked in
+      2316); centre and drift give 128,128; a stick that only reaches 0.92 on the diagonal still jogs. The right
+      stick changes too: the diagonal camera speed goes from 0.615 to 0.707 per axis. SDL (macOS) is unaffected.
+    - Still to check with a real Xbox pad: 30 / 45-degree full pushes jog, camera, menus, drift at rest.
+148. **Crash lines identify themselves without a PDB; the render thread is named "rsx render" (2026-11-12, GitHub #44):**
+    - #44: an access violation reading 0x1B on the render thread in the Nexus (Iris Xe, 1.5x, 30 fps) could not be
+      symbolized: players have no PDB and the build was patched in place.
+    - runtime/ppu/tests/boot_main.cpp, the crash filter now also prints: all 16 registers (first, before anything
+      that could touch bad memory), the .pdata function range of rip, the 16 code bytes at rip (ReadProcessMemory --
+      a __try around an inlined copy catches nothing under clang-cl /EHsc, found by review), or for a bad rip the
+      return address on the stack; "execute fault" for jumps to bad addresses; and on host threads the thread name.
+      rsx_live_draw.c names its render thread "rsx render", so the crash line and the perf "thr" lines say so.
+    - Checked with a temporary forced fault on the render thread: a bad read (the line shows 'rsx render', the
+      registers, the function range and 0F B6 04 25 1B 00 00 00 = the read of 0x1B) and a call to 0x1B (execute
+      fault, code unreadable, return address rva). The hook is not in the build.
+    - Repro attempt: Nexus (warp) at 30 fps, 1.5x and 2x, ~4 min each: no crash on the RTX 3070.
+149. **Anisotropic filtering as the game asks for it (2026-11-12, GitHub #19):**
+    - decode_sampler always used MaxAnisotropy 1. TEXTURE_CONTROL0 bits 4-6 hold the RSX's max anisotropy (0..7 =
+      1, 2, 4, 6, 8, 10, 12, 16x), and Demon's Souls sets 2x, 4x and 16x on many of its trilinear textures
+      (LD_ANISO_LOG=1 lists each setting once) -- likely why it looked less crisp than RPCS3.
+    - Fix: D3D12_FILTER_ANISOTROPIC at the game's level for samplers linear in min, mag and mip (point-filtered and
+      unmipped ones -- UI, fonts, lookups -- unchanged); the level is part of the sampler cache key. LD_ANISO=<2-16>
+      raises it everywhere that qualifies, LD_ANISO=0 turns it off (1x, as before; for weak integrated GPUs).
+    - Checked at 1-1: the stone floor shows clearly more detail at a distance, HUD identical; 59.5 vs 59.2 fps at
+      the 60 cap on the RTX 3070 (no measurable cost there). A launcher option is the main rig's (launcher) side.
 
 ### Where it stands (2026-10-27)
 New game -> Create Profile -> tutorial loads, the opening cutscene plays and gameplay renders the corridor
