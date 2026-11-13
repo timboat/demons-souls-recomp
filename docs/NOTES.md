@@ -3529,6 +3529,36 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       raises it everywhere that qualifies, LD_ANISO=0 turns it off (1x, as before; for weak integrated GPUs).
     - Checked at 1-1: the stone floor shows clearly more detail at a distance, HUD identical; 59.5 vs 59.2 fps at
       the 60 cap on the RTX 3070 (no measurable cost there). A launcher option is the main rig's (launcher) side.
+150. **macOS: internal resolution (DES_RES_SCALE; 2026-11-13, MacBook M2 Pro):**
+     - User: on the Mac a bigger window was only the 1280x720 picture stretched; the Windows build has had a
+       resolution scale since fix 74.
+     - How (rsx_metal_backend.m, a hook in rsx_draw_engine.c): the draw engine keeps working in the guest's
+       pixels. The Metal backend creates every colour and depth target at the scale times the size the engine
+       names and scales what the engine says in pixels: viewport, scissor, clear rectangles (both edges of a
+       rectangle through the same rounding, so 1.5x has no gaps). What goes back to the guest is at the guest's
+       size again: colour readback takes the mean of each guest pixel's host pixels (whole scales; the exposure's
+       small float targets, fix "float targets to guest"), depth readback and depth-as-colour take the depth at
+       each guest pixel's centre, a new target's seed from guest memory is repeated up. ZPASS counts are divided
+       by the scale squared (never to 0 for a visible draw). The engine keeps WPOS in guest pixels through
+       rsx_fp_apply_wpos_scale (fix 108's), keyed into the pipeline; g_rsx_engine_res_scale is 1 unless a backend
+       sets it, so the Vulkan and D3D12 engine backends are unchanged.
+     - The scale is per target: square targets of 1024 or more a side (the 2048x2048 shadow map and its colour
+       target) stay at the guest's size. Scaled too, 2x cost 38 fps instead of 45 at the Boletarian Palace start.
+       PS3RECOMP_METAL_RES_SHADOWS=1 scales them.
+     - Settings: DES_RES_SCALE / LD_RES_SCALE as on Windows (quarter steps 1-4; mac/play.sh passes them
+       through); DemonsSoulsLauncher.app has Resolution (1x, 1.5x, 2x, 3x), saved as res_q / res_scale like the
+       Windows launcher.
+     - Checked (sandbox, Boletarian Palace start, the game's surface captured at its internal size): 2560x1440
+       and 1920x1080 pictures; downscaled to 1280x720 they differ from 1x by a mean of 2.2 / 2.3 of 255 (edges),
+       mean brightness 33.3 / 38.8 / 34.5 against 33.2 / 38.7 / 34.4 (so the exposure reads back right), no dark
+       or bright line on the right and bottom edges, HUD and bushes as at 1x. Frame rate there, 120 s runs:
+       1x 58, 1.5x 47, 2x 45 fps. Not checked: 3x, other areas, cutscenes, the menus' render-to-texture
+       (character preview), fog gates, boss rush's timer at a scale (it is drawn at the present, so it should
+       be unaffected), a long play session.
+     - Also in this commit: fix 200's new line in cellSaveData.c read `ds.st_mtime` on a host stat, which that
+       file undefines for macOS and glibc (the Mac build stopped there after the 2026-11-12 update):
+       HOST_STAT_MTIME picks st_mtime (Windows, unchanged), st_mtimespec.tv_sec (macOS) or st_mtim.tv_sec.
+       Not built on Linux.
 
 ### Where it stands (2026-10-27)
 New game -> Create Profile -> tutorial loads, the opening cutscene plays and gameplay renders the corridor

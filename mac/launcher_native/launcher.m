@@ -11,7 +11,7 @@
 //   DemonsSoulsLauncher.app/Contents/MacOS/DemonsSoulsLauncher --play
 //                                                                    starts the game with the saved settings
 //
-// Only what the Mac build has is offered: no resolution scale, texture dump, frame-timing recording
+// Only what the Mac build has is offered: no texture dump, frame-timing recording
 // or rates other than 60 / 30 yet (docs/MACOS.md). launcher.ini keeps the Windows launcher's keys and
 // values where both have the setting, and [controls] is the same on both.
 //
@@ -112,10 +112,15 @@ static const int BR_SOULS[] = {1, 2, 3, 5, 10};   // DES_BR_SOULS: the boss rush
 enum { BR_SOULS_N = 5 };
 static NSString* const SIZES[] = {@"1280x720", @"1600x900", @"1920x1080", @"2560x1440", @"fit"};
 enum { N_SIZES = 5 };
+// Internal resolution, in the Windows launcher's terms: launcher.ini res_q is the scale in quarters
+// (4 = 1x). The Mac offers these four; another saved value shows as the next one below it.
+static const int RES_Q[] = {4, 6, 8, 12};
+static NSString* const RES_ENV[] = {@"1", @"1.5", @"2", @"3"};   // DES_RES_SCALE
+enum { N_RES = 4 };
 static NSString* const INPUT_MODES[] = {@"both", @"controller", @"keyboard"};
 
 typedef struct {
-    int fps, size, game, input, br_souls;
+    int fps, size, res, game, input, br_souls;
     BOOL movies, god, skip_intro, log;
 } Settings;
 static Settings g_set;
@@ -230,6 +235,11 @@ static void load_settings(void) {
     s->skip_intro = ini_int(@"skip_intro", 0) != 0;
     s->log = ini_int(@"mac_log", 0) != 0;
     s->input = MAX(0, MIN(2, ini_int(@"mac_input", 0)));
+    {   // res_q (quarters); older launchers wrote only res_scale (1-4)
+        int q = ini_int(@"res_q", 4 * MAX(1, MIN(4, ini_int(@"res_scale", 1))));
+        s->res = 0;
+        for (int i = 0; i < N_RES; i++) if (RES_Q[i] <= q) s->res = i;
+    }
     s->size = 0;
     NSString* size = [g_ini get:@"launcher" key:@"mac_window"];
     for (int i = 0; i < N_SIZES; i++)
@@ -256,6 +266,8 @@ static BOOL save_settings(void) {
     ini_put_int(@"mac_log", s->log);
     ini_put_int(@"mac_input", s->input);
     ini_put(@"mac_window", SIZES[s->size]);
+    ini_put_int(@"res_q", RES_Q[s->res]);
+    ini_put_int(@"res_scale", RES_Q[s->res] / 4);   // older launchers: the whole part
     ini_put(@"mac_name", g_name);
     ini_put(@"extra", g_extra);
     if (g_keys_custom)
@@ -336,6 +348,8 @@ static NSDictionary<NSString*, NSString*>* game_env(const Settings* s) {
     NSMutableDictionary<NSString*, NSString*>* e = [NSProcessInfo.processInfo.environment mutableCopy];
     e[@"DES_FPS"] = s->fps == FPS_30 ? @"30" : @"60";
     e[@"DES_SIZE"] = [SIZES[s->size] isEqualToString:@"fit"] ? fit_size() : SIZES[s->size];
+    [e removeObjectForKey:@"LD_RES_SCALE"];   // it would win over DES_RES_SCALE
+    e[@"DES_RES_SCALE"] = RES_ENV[s->res];
     if (s->game == GAME_BOSS_RUSH) {   // mac/play.sh picks game_bossrush and its own saves (bossrush/)
         [e removeObjectForKey:@"DES_GAME"];
         e[@"DES_BOSS_RUSH"] = @"1";
@@ -505,7 +519,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 
 @interface App : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate>
 @property NSWindow* window;
-@property NSPopUpButton* fps, *size, *input, *brSouls;
+@property NSPopUpButton* fps, *size, *res, *input, *brSouls;
 @property NSTextField* fpsHint, *status, *name, *extra, *keysStatus;
 @property NSMutableArray<NSButton*>* games;
 @property NSButton* movies, *god, *skipIntro, *log, *play, *update, *folders;
@@ -576,8 +590,13 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 
     [self label:@"Window" x:L y:y + 4 w:92 h:20 in:v];
     _size = [self popup:@[@"1280 x 720 (the original)", @"1600 x 900", @"1920 x 1080", @"2560 x 1440", @"As big as fits my screen"] x:X y:y w:240
-                    tip:@"The size of the game's window. The game is drawn at its own 1280x720 and scaled to the window, always at 16:9. "
-                        @"A higher internal resolution is not in the Mac build yet." in:v];
+                    tip:@"The size of the game's window, always at 16:9. How sharp the picture in it is, is Resolution below." in:v];
+    y += 32;
+
+    [self label:@"Resolution" x:L y:y + 4 w:92 h:20 in:v];
+    _res = [self popup:@[@"1x  1280 x 720 (the original)", @"1.5x  1920 x 1080", @"2x  2560 x 1440", @"3x  3840 x 2160"] x:X y:y w:240
+                   tip:@"The resolution the game is drawn at, before it is scaled to the window. Higher is sharper and shimmers less; "
+                       @"it costs frame rate (on an M2 Pro in Boletaria: 1x about 58 fps, 1.5x about 47, 2x about 45). Textures and the HUD keep their detail." in:v];
     y += 38;
 
     [self label:@"Game" x:L y:y + 3 w:92 h:20 in:v];
@@ -677,6 +696,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     const Settings* s = &g_set;
     [_fps selectItemAtIndex:s->fps == FPS_30 ? 1 : 0];
     [_size selectItemAtIndex:s->size];
+    [_res selectItemAtIndex:s->res];
     int game = game_present(s->game) ? s->game : 0;
     for (int g = 0; g < GAME_COUNT; g++) {
         _games[g].state = g == game ? NSControlStateValueOn : NSControlStateValueOff;
@@ -699,6 +719,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     Settings* s = &g_set;
     s->fps = _fps.indexOfSelectedItem == 1 ? FPS_30 : FPS_60;
     s->size = (int)_size.indexOfSelectedItem;
+    s->res = MAX(0, MIN(N_RES - 1, (int)_res.indexOfSelectedItem));
     for (int g = 0; g < GAME_COUNT; g++)
         if (_games[g].state == NSControlStateValueOn) s->game = g;
     s->br_souls = BR_SOULS[MAX(0, MIN(BR_SOULS_N - 1, (int)_brSouls.indexOfSelectedItem))];

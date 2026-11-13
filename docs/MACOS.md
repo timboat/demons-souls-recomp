@@ -89,12 +89,12 @@ mac/play.sh
 ```
 
 The launcher is the Mac counterpart of the Windows one (`mac/launcher_native/`, plain AppKit): frame rate,
-window size, which copy of the game (Boss rush too), movies, god mode, skip the intro, input, the character name, extra
+window size, internal resolution, which copy of the game (Boss rush too), movies, god mode, skip the intro, input, the character name, extra
 `NAME=value` settings, PLAY, and the same four buttons (check for updates, report a problem, controls,
 folders). It keeps the choices in `launcher.ini` in the port's folder, in the Windows launcher's format, and
 starts `mac/play.sh` with them. Its Controls window changes the keyboard and mouse keys; the game's button
 icons follow. `DemonsSoulsLauncher.app/Contents/MacOS/DemonsSoulsLauncher --play` starts the game with the
-saved settings and no window. Not offered, because the Mac build does not have them yet: resolution scale,
+saved settings and no window. Not offered, because the Mac build does not have them yet:
 fullscreen, frame rates other than 60 / 30, texture dumping and frame-timing recording.
 
 Settings for `mac/play.sh` on its own, as environment variables:
@@ -108,6 +108,7 @@ Settings for `mac/play.sh` on its own, as environment variables:
 | `PS3_INPUT_MAP=<file>` | another key layout |
 | `PS3_INPUT_MODE=controller` or `keyboard` | only that input; the default takes both |
 | `DES_SIZE=<w>x<h>` | the window's size (default 1280x720) |
+| `DES_RES_SCALE=1.5`, `2`, `3` | the internal resolution: the game is drawn at that many times 1280x720 and scaled to the window (default 1; quarter steps from 1 to 4). On an M2 Pro in Boletaria: 1x about 58 fps, 1.5x about 47, 2x about 45. `PS3RECOMP_METAL_RES_SHADOWS=1` scales the shadow maps too |
 | `DES_LOG_DIR=<dir>` | where the two logs go (default `logs/`) |
 | `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
 | `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls (the launcher picks 2x unless you choose) |

@@ -24,6 +24,9 @@
 #                     lines a second from every guest thread through one stderr lock change the game's
 #                     timing (frame drops, hitches) and grew the log by ~50 MB in five minutes
 #   DES_SIZE=<w>x<h>  the window's size (default 1280x720; the picture keeps its 16:9 inside it)
+#   DES_RES_SCALE=1|1.5|2|3   the internal resolution, as on Windows (default 1 = 1280x720; any quarter
+#                     step from 1 to 4). Sharper, and costs frame rate. The shadow maps stay at the
+#                     game's size; PS3RECOMP_METAL_RES_SHADOWS=1 scales them too
 #   DES_LOG_DIR=<dir> where last_run_out.txt / last_run_err.txt go (default logs/; the launcher's
 #                     debug mode points it at the session's folder)
 set -e
