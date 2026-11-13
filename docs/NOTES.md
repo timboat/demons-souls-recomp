@@ -3489,6 +3489,9 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       ENTER, ENTER, E, E, DOWN, E, 11 x DOWN, E to reach Create Profile): the fix 145 build shows the knight's face
       and chest covered in blotchy, garbled patches; with this fix both are clean. Remaster gameplay (1-1 start):
       armour reflections clean, no crash. destest/run.sh now takes DES_GAME and GAMEDATA_SRC (gamedata_empty).
+    - The Load Game screen's character portraits (drawn live from the model) had the same pale, blotchy face with
+      the mod (user report); fixed by the same change (fix 145 build vs this one, same save). The loading screens'
+      art (Yurt, Old King Doran) is unchanged by it and identical with and without the mod.
 147. **A full diagonal on an Xbox pad jogs: radial stick deadzone (2026-11-12, GitHub #42, #43, #22):**
     - Report: on an XInput pad a full push off the straight line walks; the keyboard's W+D jogs.
     - Cause (libs/input/cellPad.c): the 24% deadzone (7849) and its rescale were applied to each axis on its own, so
