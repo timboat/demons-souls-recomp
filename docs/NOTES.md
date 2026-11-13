@@ -3472,8 +3472,8 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       (\~0.6 core together) but this CPU's clock is held by heat / power, not by how many cores are busy.
 146. **Cube maps read with the RSX's face stride: full mip chain per face, 128-byte aligned (2026-11-12, GitHub #24):**
     - #24: with the PC Remaster mod the character creator's textures are garbled. The desktop found the
-      mechanism: the mod sets g_LightingType 3 on player materials, which samples the env-specular cube
-      (EnvSpc_m99_000 in the menu scene: 64x64 ARGB, 7 levels, chain 21844 bytes).
+      mechanism: the mod sets g_LightingType 3 on player materials, which samples the env-specular cube. In the
+      Create Profile scene that cube is 64x64 DXT1 with 7 levels (LD_CUBE_LOG: face 2728 -> 2816 bytes).
     - Cause (libs/video/rsx_live_draw.c): faces were read back to back at total / 6, and the DXT path also cut the
       chain at 4x4 before sizing a face. The RSX stores each face as the FULL declared chain and starts every face on
       a 128-byte boundary (disc TPFs: 5 * align128(chain) + chain). rsx_texture_cube_face_stride already said so for
@@ -3485,7 +3485,10 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       32x32 ARGB, 1 level: unchanged. A raw dump of the 128x128 cube is 65976 bytes = 5 * 11008 + 10920; decoded
       offline, faces 1-5 at the old stride start early (a stripe of the previous face's mips on top, picture shifted),
       at the new stride they are clean. Vanilla shiny surfaces were subtly off too.
-    - Not yet checked: the Remaster mod's character creator itself (the mod isn't installed on the 3070 PC).
+    - Confirmed with the mod (PC Remaster 0.95, tools/install_remaster.py, fresh profile, DES_SKIP_INTRO=1, keys
+      ENTER, ENTER, E, E, DOWN, E, 11 x DOWN, E to reach Create Profile): the fix 145 build shows the knight's face
+      and chest covered in blotchy, garbled patches; with this fix both are clean. Remaster gameplay (1-1 start):
+      armour reflections clean, no crash. destest/run.sh now takes DES_GAME and GAMEDATA_SRC (gamedata_empty).
 147. **A full diagonal on an Xbox pad jogs: radial stick deadzone (2026-11-12, GitHub #42, #43, #22):**
     - Report: on an XInput pad a full push off the straight line walks; the keyboard's W+D jogs.
     - Cause (libs/input/cellPad.c): the 24% deadzone (7849) and its rescale were applied to each axis on its own, so
