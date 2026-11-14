@@ -85,8 +85,8 @@ checkout** instead: install Python 3.10+, git, and clang + lld 17 or newer, then
 
 **Native Linux build (experimental):** the game as a Linux program drawn with Vulkan, with no Proton. On
 the Steam Deck it is a little faster than Proton, and most areas reach 60 fps. Build it with
-`linux/native/build.sh`, and play with `python3 linux/native/launcher.py` (a launcher window) or
-`linux/native/play.sh`. So far it is tested on the Steam Deck only:
+`linux/native/install.sh` (a one-click installer window: your disc image, its disc key, then Install), and
+play with `python3 linux/native/launcher.py` (a launcher window) or `linux/native/play.sh`. So far it is tested on the Steam Deck only:
 [docs/LINUX_NATIVE.md](docs/LINUX_NATIVE.md).
 
 ### macOS (Apple silicon)

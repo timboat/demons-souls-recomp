@@ -4,9 +4,10 @@
 One window for the play options, as DemonsSoulsLauncher.exe is on Windows and the launcher app on the Mac:
 it keeps the choices in ~/.config/demons-souls-recomp/linux-launcher.json, sets the environment variables
 linux/native/play.sh reads (DES_FPS, DES_GAME, DES_FULLSCREEN, ...) and runs it, so the window and play.sh
-on its own always start the game the same way. It also installs and rebuilds the game from your disc image
-(linux/native/build.sh, its "==> step" lines drive the progress line), updates the checkout (git pull, then
-the build), and adds itself to the applications menu (where Steam's "Add a Non-Steam Game" finds it).
+on its own always start the game the same way. It also rebuilds the game (linux/native/build.sh, its
+"==> step" lines drive the progress bar), updates the checkout (git pull, then the build), and adds itself to
+the applications menu (where Steam's "Add a Non-Steam Game" finds it). The first install, from your disc
+image, is the installer's job (linux/native/install.sh); before it, Play opens the installer.
 
     python3 linux/native/launcher.py          the window
     python3 linux/native/launcher.py --play   starts the game with the saved settings (for a shortcut)
@@ -54,8 +55,6 @@ DEFAULTS = {
     'skip_intro': False,
     'god': False,
     'gpu_clock': '800',        # Steam Deck: MHz or auto
-    'iso': '',
-    'key': '',
     'lto': False,
 }
 STEPS = ['deps', 'venv', 'game', 'decrypt', 'toolkit', 'lift', 'build']
@@ -106,7 +105,7 @@ def play_env(c):
 def play_now(c):
     """--play: start the game with the saved settings, no window."""
     if not os.access(EXE, os.X_OK):
-        print('The native build is not there yet: open the launcher and choose Install.')
+        print('The native build is not there yet: run linux/native/install.sh first.')
         return 1
     return subprocess.call(['bash', PLAY], cwd=ROOT, env=play_env(c))
 
@@ -128,6 +127,7 @@ def main_window():
     style = ttk.Style(root)
     if 'clam' in style.theme_names():
         style.theme_use('clam')
+    style.configure('Horizontal.TProgressbar', background='#3584e4')   # clam's own fill is light grey
 
     state = {'proc': None, 'kind': None}
 
@@ -214,35 +214,12 @@ def main_window():
     for var in v.values():
         var.trace_add('write', remember)
 
-    # --- install / build ---------------------------------------------------------------------------------
-    inst = ttk.LabelFrame(body, text='Install and update', padding=10)
+    # --- rebuild / update (the first install is linux/native/installer.py) ----------------------------------
+    inst = ttk.LabelFrame(body, text='Rebuild and update', padding=10)
     inst.pack(fill='x', pady=(10, 0))
-    iso = tk.StringVar(value=conf['iso'])
-    key = tk.StringVar(value=conf['key'])
-    ttk.Label(inst, text='Disc image').grid(row=0, column=0, sticky='w')
-    ttk.Entry(inst, textvariable=iso, width=40).grid(row=0, column=1, sticky='we', padx=4)
-
-    def pick_iso():
-        p = filedialog.askopenfilename(title='Your Demon\'s Souls disc image (BLUS-30443)',
-                                       filetypes=[('Disc images', '*.iso *.zip'), ('All files', '*')])
-        if p:
-            iso.set(p)
-    ttk.Button(inst, text='Browse...', command=pick_iso).grid(row=0, column=2)
-
-    def pick_dir():
-        p = filedialog.askdirectory(title='A dumped disc folder (it holds PS3_GAME)')
-        if p:
-            iso.set(p)
-    ttk.Button(inst, text='Folder...', command=pick_dir).grid(row=0, column=3, padx=(4, 0))
-    ttk.Label(inst, text='Disc key').grid(row=1, column=0, sticky='w')
-    ttk.Entry(inst, textvariable=key, width=40).grid(row=1, column=1, sticky='we', padx=4)
-    ttk.Label(inst, text='only for an encrypted (Redump) image; a .dkey next to it is found on its own',
-              foreground='#666').grid(row=2, column=1, columnspan=3, sticky='w', padx=4)
     ttk.Checkbutton(inst, text='Whole-program optimization (ThinLTO: a few % faster, a longer build)',
-                    variable=v['lto']).grid(row=3, column=0, columnspan=4, sticky='w', pady=(4, 0))
+                    variable=v['lto']).grid(row=3, column=0, columnspan=4, sticky='w')
     inst.columnconfigure(1, weight=1)
-    for var, k in ((iso, 'iso'), (key, 'key')):
-        var.trace_add('write', lambda *_a, var=var, k=k: (conf.__setitem__(k, var.get()), save_conf(conf)))
 
     prog = tk.StringVar(value='')
     bar = ttk.Progressbar(inst, maximum=len(STEPS) + 1, mode='determinate')
@@ -266,7 +243,7 @@ def main_window():
     btns.pack(side='bottom', fill='x', before=body)
     b_play = ttk.Button(btns, text='Play')
     b_play.pack(side='left')
-    b_build = ttk.Button(btns, text='Install / Rebuild')
+    b_build = ttk.Button(btns, text='Rebuild')
     b_build.pack(side='left', padx=6)
     b_update = ttk.Button(btns, text='Update')
     b_update.pack(side='left')
@@ -283,17 +260,17 @@ def main_window():
     def refresh():
         built = os.access(EXE, os.X_OK) and os.path.isfile(ELF)
         running = busy()
-        b_play.configure(state='disabled' if running or not built else 'normal')
-        b_build.configure(state='disabled' if running else 'normal')
+        b_play.configure(state='disabled' if running else 'normal', text='Play' if built else 'Install...')
+        b_build.configure(state='disabled' if running or not os.path.isfile(ELF) else 'normal')
         b_update.configure(state='disabled' if running or not os.path.isdir(os.path.join(ROOT, '.git')) else 'normal')
         b_stop.configure(state='normal' if running else 'disabled')
         if not running:
             if built:
                 status.set('Ready to play.')
             elif os.path.isfile(ELF):
-                status.set('The game files are there; Install / Rebuild compiles the game.')
+                status.set('The game files are there, the compile is not: Rebuild finishes it.')
             else:
-                status.set('Not installed yet: choose your disc image, then Install / Rebuild.')
+                status.set('Not installed yet: Install... opens the installer.')
 
     def run(kind, argv, env, on_line=None, on_done=None):
         os.makedirs(LOGS, exist_ok=True)
@@ -324,10 +301,17 @@ def main_window():
                 on_done(code)
         threading.Thread(target=reader, daemon=True).start()
 
+    def open_installer():
+        subprocess.Popen([sys.executable or 'python3', os.path.join(HERE, 'installer.py')], cwd=ROOT,
+                         start_new_session=True)
+        root.destroy()
+
     def do_play():
         remember()
         if busy():
             return
+        if not os.access(EXE, os.X_OK):
+            return open_installer()
         status.set('Playing. The logos and the first load take about a minute.')
 
         def done(code):
@@ -354,15 +338,10 @@ def main_window():
         remember()
         if busy():
             return
+        if not os.path.isfile(ELF):
+            return open_installer()
         env = dict(os.environ)
-        if iso.get().strip():
-            env['DES_ISO'] = iso.get().strip()
-        if key.get().strip():
-            env['DES_KEY'] = key.get().strip()
         env['DES_LTO'] = '1' if v['lto'].get() else '0'
-        if not os.path.isdir(os.path.join(ROOT, 'game', 'PS3_GAME')) and not iso.get().strip():
-            messagebox.showinfo('Demon\'s Souls', 'Choose your disc image (or a dumped disc folder) first.')
-            return
         bar['value'] = 0
         prog.set('Starting...')
         status.set('Building. The first build takes a long while (an hour or more on a Steam Deck).')

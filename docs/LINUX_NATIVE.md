@@ -23,7 +23,29 @@ natively; the Tower of Latria is around 46. On the Deck the game holds the GPU c
 runs (`DES_GPU_CLOCK`, below): with the automatic clock, the CPU takes the shared 15 W and the GPU sits
 at 200 MHz.
 
-## Build
+## Install (one click)
+
+```sh
+git clone -b linux-native https://github.com/timboat/demons-souls-recomp
+demons-souls-recomp/linux/native/install.sh
+```
+
+The installer window asks for your disc image (an .iso, a Redump .zip, or a dumped disc folder) and its
+disc key; **Install** does the rest. The disc key is only for an
+encrypted (Redump) image: copy the "Disc Key" line from
+[Redump's page for this disc](http://redump.org/disc/16199/) (the window has a button for it). The
+installer's steps:
+
+- **The build tools:** missing ones are installed through your distribution's package manager after one
+  password prompt (Arch, Debian / Ubuntu, Fedora families). On SteamOS it makes the `des-build`
+  container instead (below).
+- **The build:** every step of `linux/native/build.sh`, with a checklist and a progress bar.
+- **The menu entries:** they go in your applications menu, and the window then offers Play or the launcher.
+
+Run it again after a failure or a Cancel: it continues where it stopped. `install.sh` first gets Tk for
+Python if it is missing.
+
+## Build (by hand)
 
 You need clang + lld (17 or newer; tested with 23), cmake, ninja, SDL2, glslang, SPIRV-Tools, the Vulkan
 headers, Python 3.10+ and git, and FFmpeg's development files for the movies. `linux/native/build.sh deps`
@@ -49,8 +71,8 @@ see NOTES), `JOBS=<n>` (parallel compile jobs; lower it if the build runs out of
 ### SteamOS: the build container
 
 SteamOS has no compiler, so the compile runs in a distrobox container named `des-build`; `build.sh` finds
-it and uses it, and `play.sh` then runs the game there too (its FFmpeg and SDL match the build's). Make it
-once, in desktop mode:
+it and uses it, and `play.sh` then runs the game there too (its FFmpeg and SDL match the build's). The
+installer makes it; by hand, once, in desktop mode:
 
 ```sh
 distrobox create -n des-build -i archlinux:latest
@@ -69,8 +91,7 @@ linux/native/play.sh                 # or straight into the game, with the setti
 ```
 
 The launcher (Python + Tk: Debian / Ubuntu `python3-tk`, Fedora `python3-tkinter`, Arch `tk`; SteamOS has
-it) keeps your settings, runs the build from your disc image with a progress bar, updates the checkout
-(git pull + rebuild), and **More → Add to the applications menu** adds two entries: the launcher and
+it) keeps your settings, rebuilds (for example with ThinLTO), updates the checkout (git pull + rebuild), and **More → Add to the applications menu** adds two entries: the launcher and
 "... - play" (straight into the game with the saved settings, `launcher.py --play`). For Steam's game mode,
 add one of them with *Games → Add a Non-Steam Game to My Library*.
 
