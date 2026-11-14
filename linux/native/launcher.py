@@ -385,7 +385,8 @@ def main_window():
     def add_menu_entry():
         apps = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'applications')
         os.makedirs(apps, exist_ok=True)
-        icon = icon_path if os.path.isfile(icon_path) else 'applications-games'
+        art_icon = os.path.join(ROOT, 'port', 'steam_art', 'icon.png')
+        icon = art_icon if os.path.isfile(art_icon) else icon_path if os.path.isfile(icon_path) else 'applications-games'
         py = sys.executable or 'python3'
         entries = {
             'demons-souls-native.desktop': ("Demon's Souls (native)", '%s %s' % (shlex.quote(py), shlex.quote(__file__))),
@@ -397,15 +398,33 @@ def main_window():
                 f.write('[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\nTerminal=false\n'
                         'Categories=Game;\nPath=%s\n' % (name, cmd, icon, ROOT))
         messagebox.showinfo('Demon\'s Souls', 'Added "Demon\'s Souls (native)" (this window) and "... - play" (straight '
-                            'into the game) to your applications menu. In Steam: Games > Add a Non-Steam Game to '
-                            'My Library, and pick one of them.')
+                            'into the game) to your applications menu.')
+
+    def add_to_steam():
+        if busy():
+            return
+        if subprocess.run(['pgrep', '-x', 'steam'], stdout=subprocess.DEVNULL).returncode == 0 and \
+                not messagebox.askyesno('Demon\'s Souls', 'Steam has to close for a moment to add the game (it '
+                                        'rewrites its list of games when it exits), then it opens again. Go on?'):
+            return
+        status.set('Adding Demon\'s Souls to Steam, with its artwork...')
+
+        def done(code):
+            if code == 0:
+                status.set('In your Steam library as "Demon\'s Souls", with artwork from your disc.')
+            else:
+                messagebox.showerror('Demon\'s Souls', 'Adding it to Steam failed (exit code %d; the log below '
+                                     'says why).' % code)
+        run('steam', [sys.executable or 'python3', os.path.join(HERE, 'steam.py'), 'add', '--restart-steam'],
+            dict(os.environ), on_done=done)
 
     menu.add_command(label='Saves folder', command=lambda: open_path(os.path.join(ROOT, 'gamedata')))
     menu.add_command(label='Logs folder', command=lambda: open_path(LOGS))
     menu.add_command(label='Keyboard and mouse keys (input.toml)',
                      command=lambda: open_path(os.path.join(HERE, 'input.toml')))
     menu.add_separator()
-    menu.add_command(label='Add to the applications menu (and Steam)', command=add_menu_entry)
+    menu.add_command(label='Add to Steam (with artwork from your disc)', command=add_to_steam)
+    menu.add_command(label='Add to the applications menu', command=add_menu_entry)
 
     b_play.configure(command=do_play)
     b_build.configure(command=do_build)

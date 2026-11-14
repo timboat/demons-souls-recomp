@@ -40,7 +40,8 @@ installer's steps:
   password prompt (Arch, Debian / Ubuntu, Fedora families). On SteamOS it makes the `des-build`
   container instead (below).
 - **The build:** every step of `linux/native/build.sh`, with a checklist and a progress bar.
-- **The menu entries:** they go in your applications menu, and the window then offers Play or the launcher.
+- **The menu entries:** they go in your applications menu, with an icon cut from your disc's artwork. The
+  window then offers Play, the launcher, and **Add to Steam**.
 
 Run it again after a failure or a Cancel: it continues where it stopped. `install.sh` first gets Tk for
 Python if it is missing.
@@ -94,6 +95,14 @@ The launcher (Python + Tk: Debian / Ubuntu `python3-tk`, Fedora `python3-tkinter
 it) keeps your settings, rebuilds (for example with ThinLTO), updates the checkout (git pull + rebuild), and **More → Add to the applications menu** adds two entries: the launcher and
 "... - play" (straight into the game with the saved settings, `launcher.py --play`). For Steam's game mode,
 add one of them with *Games → Add a Non-Steam Game to My Library*.
+
+**Steam:** *Add to Steam* (in the installer, or the launcher's More menu; or `linux/native/steam.py add
+--restart-steam`) adds a "Demon's Souls" shortcut that goes straight into the game with the launcher's saved
+settings. It comes with library artwork cut from your own disc's background picture (`PS3_GAME/PIC1.PNG`):
+a portrait and a wide capsule, the hero banner, the logo and an icon, kept in `port/steam_art/`. A shortcut
+for the Proton build (`linux/play.sh`) gets the same artwork. Steam rewrites its shortcut list when it exits,
+so it closes for a moment and opens again. The first change keeps a copy of the old list
+(`shortcuts.vdf.before-demons-souls`).
 
 `linux/native/play.sh` settings (environment): `DES_FPS=60|30|unlimited` (default 60),
 `DES_FULLSCREEN=0|1` (default 1 on a Deck), `DES_MOVIES=0|1`, `DES_NAME`, `DES_GAME=game_remaster`,

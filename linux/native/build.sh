@@ -100,7 +100,9 @@ for s in $steps; do
     req=$(sha256sum setup/requirements.txt | cut -c1-16)
     if [ "$(cat "$DES_VENV/.des-ready" 2>/dev/null)" != "$req" ] ||
        ! "$VPY" -c 'import sys, Crypto, cryptography; assert sys.version_info >= (3, 10)' >/dev/null 2>&1; then
-      if ! "$VPY" -c 'import sys; assert sys.version_info >= (3, 10)' >/dev/null 2>&1; then
+      # (a system Python update -- SteamOS 3.13 -> 3.14 -- leaves the old environment without pip: make it anew)
+      if ! "$VPY" -c 'import sys; assert sys.version_info >= (3, 10)' >/dev/null 2>&1 ||
+         ! "$VPY" -m pip --version >/dev/null 2>&1; then
         rm -rf "$DES_VENV"
         "$PY" -m venv "$DES_VENV" || fail "could not make the Python environment in $DES_VENV (Debian / Ubuntu: sudo apt install python3-venv)"
       fi

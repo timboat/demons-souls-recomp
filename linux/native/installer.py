@@ -464,7 +464,10 @@ def main():
                     st['done_steps'].add(s)
                     mark(s, 'ok')
                 bar['value'] = 100
-                return finished()
+                # the icon and the Steam artwork, cut from the disc's own background picture
+                msg.set('Making the icon and the Steam artwork...')
+                return run([sys.executable or 'python3', os.path.join(rd, 'linux', 'native', 'steam.py'), 'art'],
+                           rd, dict(os.environ), None, lambda _code: finished())
             if st['cancelled']:
                 return fail('Cancelled. Press Install to continue where it stopped.')
             text = st.get('error', '')
@@ -482,7 +485,7 @@ def main():
         launcher = os.path.join(rd, 'linux', 'native', 'launcher.py')
         try:
             add_menu_entries(rd, launcher)
-            extra = ' "Demon\'s Souls (native)" is in your applications menu (Steam: Games > Add a Non-Steam Game).'
+            extra = ' "Demon\'s Souls (native)" is in your applications menu; Add to Steam puts it in your library.'
         except OSError:
             extra = ''
         msg.set('Installed in %d minutes.%s' % (int(time.time() - st['started']) // 60, extra))
@@ -495,13 +498,35 @@ def main():
         ttk.Button(after, text='Open the launcher (settings)',
                    command=lambda: (subprocess.Popen([py, launcher], cwd=rd, start_new_session=True),
                                     root.destroy())).pack(side='left', padx=8)
+        ttk.Button(after, text='Add to Steam', command=lambda: add_to_steam(rd)).pack(side='left')
         after.pack(fill='x', pady=(10, 0), before=btns)
+
+    def add_to_steam(rd):
+        if subprocess.run(['pgrep', '-x', 'steam'], stdout=subprocess.DEVNULL).returncode == 0 and \
+                not messagebox.askyesno('Demon\'s Souls', 'Steam has to close for a moment to add the game (it '
+                                        'rewrites its list of games when it exits), then it opens again. Go on?'):
+            return
+        msg.set('Adding Demon\'s Souls to Steam, with its artwork...')
+        set_busy(True)
+
+        def done(code):
+            set_busy(False)
+            msg.set('In your Steam library as "Demon\'s Souls", with artwork from your disc. In game mode it starts '
+                    'straight into the game.' if code == 0 else
+                    'Adding it to Steam failed (exit code %d; the details say why).' % code)
+            if code and not shown['log']:
+                toggle_log()
+        run([sys.executable or 'python3', os.path.join(rd, 'linux', 'native', 'steam.py'), 'add', '--restart-steam'],
+            rd, dict(os.environ), None, done)
 
     def add_menu_entries(rd, launcher):
         apps = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'applications')
         os.makedirs(apps, exist_ok=True)
-        icon = os.path.join(rd, 'game', 'PS3_GAME', 'ICON0.PNG')
-        icon = icon if os.path.isfile(icon) else 'applications-games'
+        icon = 'applications-games'
+        for c in (os.path.join(rd, 'port', 'steam_art', 'icon.png'), os.path.join(rd, 'game', 'PS3_GAME', 'ICON0.PNG')):
+            if os.path.isfile(c):
+                icon = c
+                break
         py = shlex.quote(sys.executable or 'python3')
         for fname, name, extra in (('demons-souls-native.desktop', "Demon's Souls (native)", ''),
                                    ('demons-souls-native-play.desktop', "Demon's Souls (native) - play", ' --play')):
