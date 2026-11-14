@@ -203,10 +203,18 @@ index 0000000..0f80fdd
 +int ps3_audio_thread_realtime(void) { return -1; }
 +#endif
 diff --git a/libs/audio/cellAudio.c b/libs/audio/cellAudio.c
-index 02b751b..f83428b 100644
+index 02b751b2..ed4a77f8 100644
 --- a/libs/audio/cellAudio.c
 +++ b/libs/audio/cellAudio.c
-@@ -477,8 +477,9 @@ static void audio_mix_one_block(void)
+@@ -86,6 +86,7 @@ extern uint32_t sys_event_queue_create_direct(uint64_t key, int32_t size);
+ #if AUDIO_BACKEND_SDL2
+   #include <SDL2/SDL.h>
+ #endif
++#include "../input/ps3_sdl_lock.h"   /* SDL init vs the window thread's event pump */
+ 
+ /* Portable threading */
+ #ifdef _WIN32
+@@ -477,8 +478,9 @@ static void audio_mix_one_block(void)
           * vs which block the read cursor is on -- distinguishes "writer never
           * writes" from "writer and reader cycle out of phase". */
          { static int s_pk = -1; if (s_pk < 0) s_pk = getenv("AUDIO_PEAK") ? 1 : 0;
@@ -218,7 +226,7 @@ index 02b751b..f83428b 100644
                  char map[36]; u32 b;
                  for (b = 0; b < nblock && b < 32; b++) {
                      const float* bp = port->buffer + b * CELL_AUDIO_BLOCK_SAMPLES * nch;
-@@ -488,8 +489,11 @@ static void audio_mix_one_block(void)
+@@ -488,8 +490,11 @@ static void audio_mix_one_block(void)
                      map[b] = nz ? '#' : '.';
                  }
                  map[b] = 0;
@@ -232,7 +240,7 @@ index 02b751b..f83428b 100644
              } } }
  
          for (u32 s = 0; s < CELL_AUDIO_BLOCK_SAMPLES; s++) {
-@@ -561,6 +565,8 @@ static void audio_notify_event_queues(void)
+@@ -561,6 +566,8 @@ static void audio_notify_event_queues(void)
  
  #ifdef _WIN32
  static unsigned long long g_audio_underruns;
@@ -241,7 +249,7 @@ index 02b751b..f83428b 100644
  static unsigned __stdcall audio_mix_thread_func(void* arg)
  {
      (void)arg;
-@@ -585,27 +591,81 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -585,27 +592,81 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
       * dropped the surplus: 20% of the audio thrown away, and a guest mixer
       * (GH3's FMOD) that could not keep ahead of the read index played gaps.
       * With no device, pace on the performance counter instead. */
@@ -333,7 +341,7 @@ index 02b751b..f83428b 100644
          }
          blocks++;
          /* Mix and submit one block */
-@@ -621,8 +681,17 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -621,8 +682,17 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
          /* AUDIO_WAV=<file>: append the final mix as raw f32le stereo 48 kHz
           * (ffmpeg -f f32le -ar 48000 -ac 2 -i <file>). */
          { static FILE* _wf = (FILE*)-1;
@@ -352,7 +360,7 @@ index 02b751b..f83428b 100644
          audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
          /* AUDIO_RATE=1: blocks mixed vs real time, and frames dropped. */
          { static int on = -1; if (on < 0) on = getenv("AUDIO_RATE") ? 1 : 0;
-@@ -631,15 +700,18 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -631,15 +701,18 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
              { int nz = 0; for (u32 i = 0; i < CELL_AUDIO_BLOCK_SAMPLES * 2; i++) if (s_mix_buffer[i] != 0.0f) { nz = 1; break; }
                if (!nz) z++; }
              if (now - t0 >= 5000) {
@@ -373,7 +381,7 @@ index 02b751b..f83428b 100644
  
          /* Notify event queues */
          audio_notify_event_queues();
-@@ -649,21 +721,114 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
+@@ -649,21 +722,114 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
      return 0;
  }
  #else
@@ -493,7 +501,19 @@ index 02b751b..f83428b 100644
          }
      }
  
-@@ -934,6 +1099,33 @@ s32 cellAudioPortStop(u32 portNum)
+@@ -739,7 +905,10 @@ s32 cellAudioInit(void)
+     memset(s_notify_queues, 0, sizeof(s_notify_queues));
+     mutex_init(&s_audio_mutex);
+ 
+-    if (audio_backend_init() < 0) {
++    ps3_sdl_lock();
++    const int audio_rc = audio_backend_init();
++    ps3_sdl_unlock();
++    if (audio_rc < 0) {
+         printf("[cellAudio] WARNING: Audio backend init failed, continuing silently\n");
+         /* Don't fail -- games should still run without audio */
+     }
+@@ -934,6 +1103,33 @@ s32 cellAudioPortStop(u32 portNum)
      return CELL_OK;
  }
  
@@ -5546,7 +5566,7 @@ index 0000000..d9edd4d
 +
 +#endif /* PS3RECOMP_VDEC_MF_H */
 diff --git a/libs/input/cellPad.c b/libs/input/cellPad.c
-index afdd93d..5cb455a 100644
+index afdd93de..c9e7a26d 100644
 --- a/libs/input/cellPad.c
 +++ b/libs/input/cellPad.c
 @@ -9,6 +9,23 @@
@@ -5573,7 +5593,7 @@ index afdd93d..5cb455a 100644
   */
  
  #include <time.h>
-@@ -16,10 +33,14 @@
+@@ -16,10 +33,15 @@
  #include <stdio.h>
  #include <stdlib.h>
  #include <string.h>
@@ -5584,11 +5604,12 @@ index afdd93d..5cb455a 100644
  #include "../../runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_write*: guest EA -> host */
  #include "ps3emu/log_first.h"
 +#include "ps3emu/host_input.h"            /* keyboard/mouse state from the window */
++#include "ps3_sdl_lock.h"                  /* SDL is also pumped by the window thread */
 +#include "pad_input_map.h"                /* PS3_INPUT_MAP: keyboard/mouse/controller bindings */
  
  /* PAD_CLOCK=flips: PAD_SCRIPT and PAD_STICK times count guest flips instead of
   * wall-clock seconds. A loaded machine runs a title at a third of its usual
-@@ -61,6 +82,22 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -61,6 +83,22 @@ static double pad_clock(unsigned long long t0_ms)
    #include <xinput.h>
  #endif
  
@@ -5611,7 +5632,7 @@ index afdd93d..5cb455a 100644
  #if PAD_BACKEND_SDL2
    #include <SDL2/SDL.h>
  #endif
-@@ -71,6 +108,11 @@ static double pad_clock(unsigned long long t0_ms)
+@@ -71,6 +109,11 @@ static double pad_clock(unsigned long long t0_ms)
  
  #define PAD_MAX_HOST_PORTS  4  /* XInput supports max 4; SDL may support more */
  
@@ -5623,7 +5644,7 @@ index afdd93d..5cb455a 100644
  typedef struct {
      int  connected;
      u16  buttons;           /* CELL_PAD_CTRL_* bitmask */
-@@ -100,6 +142,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
+@@ -100,6 +143,71 @@ static PadHostState  s_host_state[PAD_MAX_HOST_PORTS];
  /* Per-port "a report has arrived since your last read" flag; see cellPadGetData. */
  static int s_data_fresh[PAD_MAX_HOST_PORTS];
  
@@ -5695,7 +5716,7 @@ index afdd93d..5cb455a 100644
  #if PAD_BACKEND_SDL2
  /* PS3 port i's controller, by SDL instance id (-1 = none); the port keeps the
   * GUID of the last one it had so that pad gets the same port back. */
-@@ -171,6 +278,12 @@ static u32 pad_status_take(u32 port)
+@@ -171,6 +279,12 @@ static u32 pad_status_take(u32 port)
   * PAD_RUMBLE_HOLD_MS. Large -> the host's low-frequency motor, small -> the
   * high-frequency one, which is how DualShock 4, DualSense and Xbox pads are
   * laid out too.
@@ -5708,7 +5729,7 @@ index afdd93d..5cb455a 100644
   * -------------------------------------------------------------------------*/
  
  #define PAD_RUMBLE_HOLD_MS     1000   /* one SDL request lasts this long ... */
-@@ -179,16 +292,43 @@ static u32 pad_status_take(u32 port)
+@@ -179,16 +293,43 @@ static u32 pad_status_take(u32 port)
  typedef struct {
      u16 lo, hi;                 /* what the host motors were last asked for */
      unsigned long long sent_ms; /* when (pad_now_ms), 0 = nothing to renew */
@@ -5757,7 +5778,7 @@ index afdd93d..5cb455a 100644
  }
  
  /* ---------------------------------------------------------------------------
-@@ -234,21 +374,41 @@ static int pad_xinput_load(void)
+@@ -234,21 +375,41 @@ static int pad_xinput_load(void)
      return 0;
  }
  
@@ -5813,7 +5834,7 @@ index afdd93d..5cb455a 100644
  }
  
  /* Keyboard fallback for port 0.
-@@ -258,8 +418,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -258,8 +419,8 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * it can be watched but not played. That is what The Simpsons Arcade Game hit:
   * it reached its attract loop and no input existed to start a game.
   *
@@ -5824,7 +5845,7 @@ index afdd93d..5cb455a 100644
   * read only while a window of THIS process is in the foreground, so typing in
   * another application does not drive the game. Set PAD_NO_KEYBOARD=1 to
   * disable it entirely.
-@@ -268,8 +428,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
+@@ -268,8 +429,12 @@ static u8 pad_xinput_stick_to_u8(short raw, short deadzone)
   * 1/2 = L2/R2, Enter = START, Tab = SELECT. The left stick mirrors the d-pad
   * so a title that reads the stick instead is playable too. */
  #ifdef _WIN32
@@ -5837,7 +5858,7 @@ index afdd93d..5cb455a 100644
      HWND fg = GetForegroundWindow();
      if (!fg) return 0;
      DWORD pid = 0;
-@@ -277,23 +441,711 @@ static int pad_host_window_focused(void)
+@@ -277,23 +442,711 @@ static int pad_host_window_focused(void)
      return pid == GetCurrentProcessId();
  }
  
@@ -6562,7 +6583,7 @@ index afdd93d..5cb455a 100644
      static const struct { int vk; u16 btn; } map[] = {
          { VK_UP,     CELL_PAD_CTRL_UP },      { VK_DOWN,  CELL_PAD_CTRL_DOWN },
          { VK_LEFT,   CELL_PAD_CTRL_LEFT },    { VK_RIGHT, CELL_PAD_CTRL_RIGHT },
-@@ -306,7 +1158,7 @@ static void pad_poll_keyboard(void)
+@@ -306,7 +1159,7 @@ static void pad_poll_keyboard(void)
  
      u16 btns = 0;
      for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
@@ -6571,7 +6592,7 @@ index afdd93d..5cb455a 100644
  
      hs->buttons   = btns;
      hs->connected = 1;
-@@ -317,10 +1169,100 @@ static void pad_poll_keyboard(void)
+@@ -317,10 +1170,100 @@ static void pad_poll_keyboard(void)
      hs->analog_rx = hs->analog_ry = 128;
      hs->trigger_l2 = (u8)((btns & CELL_PAD_CTRL_L2) ? 255 : 0);
      hs->trigger_r2 = (u8)((btns & CELL_PAD_CTRL_R2) ? 255 : 0);
@@ -6674,7 +6695,7 @@ index afdd93d..5cb455a 100644
            fflush(stdout); } }
  }
  #endif
-@@ -379,14 +1321,11 @@ static void pad_poll_xinput(void)
+@@ -379,14 +1322,11 @@ static void pad_poll_xinput(void)
  
          s_host_state[i].buttons = btns;
  
@@ -6694,7 +6715,7 @@ index afdd93d..5cb455a 100644
  
          /* Triggers */
          s_host_state[i].trigger_l2 = gp->bLeftTrigger;
-@@ -443,12 +1382,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
+@@ -443,12 +1383,34 @@ static u8 pad_sdl_trigger_to_u8(int raw)
      return (u8)val;
  }
  
@@ -6730,7 +6751,7 @@ index afdd93d..5cb455a 100644
      const int on = r->lo || r->hi;
      SDL_GameControllerRumble(gc, r->lo, r->hi, on ? PAD_RUMBLE_HOLD_MS : 0);
      r->sent_ms = on ? pad_now_ms() : 0;
-@@ -562,9 +1523,14 @@ static void pad_sdl_hotplug(int force)
+@@ -562,9 +1524,14 @@ static void pad_sdl_hotplug(int force)
  
  static void pad_poll_sdl2(void)
  {
@@ -6745,7 +6766,7 @@ index afdd93d..5cb455a 100644
      for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
          SDL_GameController* gc = s_sdl_controllers[i];
          if (!gc) {
-@@ -575,43 +1541,59 @@ static void pad_poll_sdl2(void)
+@@ -575,43 +1542,59 @@ static void pad_poll_sdl2(void)
  
          s_host_state[i].connected = 1;
  
@@ -6834,7 +6855,7 @@ index afdd93d..5cb455a 100644
  
          /* Pressure: SDL has digital buttons, so 0 or 255 */
          s_host_state[i].press_up       = (btns & CELL_PAD_CTRL_UP)       ? 255 : 0;
-@@ -629,6 +1611,7 @@ static void pad_poll_sdl2(void)
+@@ -629,6 +1612,7 @@ static void pad_poll_sdl2(void)
  
  static void pad_init_backend(void)
  {
@@ -6842,7 +6863,7 @@ index afdd93d..5cb455a 100644
      if (!s_sdl_inited) {
          if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0) {
              /* The game is not always the focused app: on macOS its window
-@@ -643,6 +1626,17 @@ static void pad_init_backend(void)
+@@ -643,6 +1627,17 @@ static void pad_init_backend(void)
               * cared. SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS=0 in the
               * environment still wins over this. */
              SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
@@ -6860,7 +6881,7 @@ index afdd93d..5cb455a 100644
              SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
          }
          s_sdl_inited = 1;
-@@ -650,6 +1644,11 @@ static void pad_init_backend(void)
+@@ -650,6 +1645,11 @@ static void pad_init_backend(void)
      memset(s_sdl_controllers, 0, sizeof(s_sdl_controllers));
      for (int p = 0; p < PAD_MAX_HOST_PORTS; p++) s_sdl_ids[p] = -1;
  
@@ -6872,7 +6893,7 @@ index afdd93d..5cb455a 100644
      /* Open any controllers already connected */
      pad_sdl_hotplug(1);
  }
-@@ -684,7 +1683,13 @@ static void pad_shutdown_backend(void)
+@@ -684,7 +1684,13 @@ static void pad_shutdown_backend(void)
  static unsigned long long pad_now_ms(void)
  {
  #ifdef _WIN32
@@ -6887,7 +6908,7 @@ index afdd93d..5cb455a 100644
  #else
      struct timespec ts;
      clock_gettime(CLOCK_MONOTONIC, &ts);
-@@ -693,6 +1698,483 @@ static unsigned long long pad_now_ms(void)
+@@ -693,6 +1699,483 @@ static unsigned long long pad_now_ms(void)
  #endif
  }
  
@@ -7371,7 +7392,7 @@ index afdd93d..5cb455a 100644
  static void pad_poll_backend(void)
  {
      static unsigned long long s_last_ms = 0;
-@@ -706,17 +2188,63 @@ static void pad_poll_backend(void)
+@@ -706,17 +2189,65 @@ static void pad_poll_backend(void)
      for (int _i = 0; _i < PAD_MAX_HOST_PORTS; _i++) s_data_fresh[_i] = 1;
  
  #if PAD_BACKEND_XINPUT
@@ -7382,7 +7403,9 @@ index afdd93d..5cb455a 100644
 +      if (!no_x) pad_poll_xinput();
 +      else s_host_state[0].connected = 0; }   /* the XInput poll resets this; the keyboard sets it */
  #elif PAD_BACKEND_SDL2
++    ps3_sdl_lock();
      pad_poll_sdl2();
++    ps3_sdl_unlock();
  #endif
  #ifdef _WIN32
 -    if (!s_host_state[0].connected) pad_poll_keyboard();
@@ -7437,7 +7460,7 @@ index afdd93d..5cb455a 100644
  /* ---------------------------------------------------------------------------
   * API implementations
   * -----------------------------------------------------------------------*/
-@@ -735,6 +2263,7 @@ s32 cellPadInit(u32 max_connect)
+@@ -735,6 +2266,7 @@ s32 cellPadInit(u32 max_connect)
      if (max_connect == 0 || max_connect > 127)
          return CELL_PAD_ERROR_INVALID_PARAMETER;
  
@@ -7445,7 +7468,27 @@ index afdd93d..5cb455a 100644
      s_pad_initialized = 1;
      s_max_connect = max_connect > CELL_PAD_MAX_PORT_NUM ? CELL_PAD_MAX_PORT_NUM : max_connect;
      memset(s_port_setting, 0, sizeof(s_port_setting));
-@@ -865,6 +2394,7 @@ skip_inject: ;
+@@ -742,7 +2274,9 @@ s32 cellPadInit(u32 max_connect)
+         pad_host_release(&s_host_state[i]);
+ 
+     pad_lock();
++    ps3_sdl_lock();
+     pad_init_backend();
++    ps3_sdl_unlock();
+     pad_unlock();
+ 
+     /* Do an initial poll to detect connected controllers */
+@@ -765,7 +2299,9 @@ s32 cellPadEnd(void)
+         return CELL_PAD_ERROR_NOT_OPENED;
+ 
+     pad_lock();
++    ps3_sdl_lock();
+     pad_shutdown_backend();
++    ps3_sdl_unlock();
+     pad_unlock();
+ 
+     s_pad_initialized = 0;
+@@ -865,6 +2401,7 @@ skip_inject: ;
          len = CELL_PAD_LEN_CHANGE_PRESS_ON;
  
      data->len = len;
@@ -7453,7 +7496,7 @@ index afdd93d..5cb455a 100644
      /* Finalize this call's packet freshness before any injected hold budget
       * advances. len=0 drain reads still build the ordinary payload, but do
       * not consume a PAD_FILE report. See the emission contract below. */
-@@ -875,6 +2405,20 @@ skip_inject: ;
+@@ -875,6 +2412,20 @@ skip_inject: ;
              if (!s_data_fresh[port_no]) data->len = 0;   /* nothing new: end the drain */
              else                        s_data_fresh[port_no] = 0;
          }
@@ -7474,7 +7517,7 @@ index afdd93d..5cb455a 100644
      }
      /* button[0] is reserved and 0 on hardware; button[1] carries the pad mode
       * in its high nibble (0x7) and len/2 in its low one. GH3 drops any packet
-@@ -947,13 +2491,28 @@ skip_inject: ;
+@@ -947,13 +2498,28 @@ skip_inject: ;
                    held[i]--;
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL1] |= (u16)(ev[i].mask & 0xFF);
                    data->button[CELL_PAD_BTN_OFFSET_DIGITAL2] |= (u16)((ev[i].mask >> 8) & 0xFF);
@@ -7505,7 +7548,7 @@ index afdd93d..5cb455a 100644
      /* PAD_FILE=<path> -- closed-loop input. Each poll, if the file holds a
       * button mask (same encoding as PAD_SCRIPT), press it for a fixed number
       * of positive guest reports and empty the file on admission. A driver
-@@ -967,6 +2526,7 @@ skip_inject: ;
+@@ -967,6 +2533,7 @@ skip_inject: ;
       *   echo 0x0040 4 > pad.txt  # DOWN for 4 reports (menus auto-repeat a
       *                            # long hold; the default is 40)
       */
@@ -7513,7 +7556,7 @@ index afdd93d..5cb455a 100644
      { static int s_pf = -1; static char pf_path[512];
        static unsigned held_mask = 0; static int held_n = 0;
        if (s_pf < 0) { const char* e = getenv("PAD_FILE");
-@@ -978,11 +2538,25 @@ skip_inject: ;
+@@ -978,11 +2545,25 @@ skip_inject: ;
                if (f) {
                    char buf[64]; buf[0] = 0;
                    if (fgets(buf, sizeof buf, f)) {
@@ -7544,7 +7587,7 @@ index afdd93d..5cb455a 100644
                    }
                    fclose(f);
                    if (held_n > 0) { FILE* w = fopen(pf_path, "wb"); if (w) fclose(w); }
-@@ -1015,6 +2589,30 @@ skip_inject: ;
+@@ -1015,6 +2596,30 @@ skip_inject: ;
        if (s_st && pad_clock(s_t0) >= s_from && pad_clock(s_t0) < s_until) { hs->analog_lx = s_v[0]; hs->analog_ly = s_v[1];
                    hs->analog_rx = s_v[2]; hs->analog_ry = s_v[3];
                    hs->connected = 1; }
@@ -7575,7 +7618,7 @@ index afdd93d..5cb455a 100644
        /* PAD_SWEEP=<seconds per step>: walk the sticks through a fixed set of
         * deflections instead of holding one. Guessing a single stick position and
         * re-running costs ~5 minutes a try; a sweep answers "can input move the
-@@ -1042,8 +2640,16 @@ skip_inject: ;
+@@ -1042,8 +2647,16 @@ skip_inject: ;
                  fprintf(stderr, "[PADSWEEP] step %d: l=(%u,%u) r=(%u,%u)%c", k,
                          steps[k][0], steps[k][1], steps[k][2], steps[k][3], 10); } }
          } } }
@@ -7594,7 +7637,7 @@ index afdd93d..5cb455a 100644
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X]  = hs->analog_lx;
      data->button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y]  = hs->analog_ly;
  
-@@ -1122,6 +2728,21 @@ emit:
+@@ -1122,6 +2735,21 @@ emit:
       * PAD_ALWAYS_CHANGE=1 restores the old always-a-packet behaviour. */
      {
          unsigned int ea = (unsigned int)(uintptr_t)data_guest;
@@ -7616,7 +7659,7 @@ index afdd93d..5cb455a 100644
          vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
          for (int _i = 0; _i < CELL_PAD_MAX_CODES; _i++)                    /* button[] u16 */
              vm_write16((unsigned long long)ea + 4 + (unsigned int)_i * 2, data->button[_i]);
-@@ -1395,18 +3016,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1395,18 +3023,26 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
  
      param = GUEST_PTR(param, CellPadActParam*);
  
@@ -7648,8 +7691,13 @@ index afdd93d..5cb455a 100644
          XINPUT_VIBRATION vib;
          vib.wLeftMotorSpeed  = (WORD)lo;
          vib.wRightMotorSpeed = (WORD)hi;
-@@ -1419,7 +3048,7 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+@@ -1416,10 +3052,12 @@ s32 cellPadSetActDirect(u32 port_no, CellPadActParam* param)
+ 
+ #if PAD_BACKEND_SDL2
+     pad_lock();
++    ps3_sdl_lock();
      pad_sdl_rumble_send((int)port_no);
++    ps3_sdl_unlock();
      pad_unlock();
  #endif
 -
@@ -46159,7 +46207,7 @@ index f076ef89..c6691d5c 100644
 
 
 diff --git a/libs/video/rsx_vulkan_backend.c b/libs/video/rsx_vulkan_backend.c
-index db64302e..469435b6 100644
+index db64302e..e5b427b1 100644
 --- a/libs/video/rsx_vulkan_backend.c
 +++ b/libs/video/rsx_vulkan_backend.c
 @@ -20,10 +20,12 @@
@@ -46189,7 +46237,7 @@ index db64302e..469435b6 100644
   */
  
  #ifndef _WIN32
-@@ -52,11 +55,21 @@
+@@ -52,11 +55,22 @@
  #include "rsx_draw_engine.h"
  #include "vulkan/rsx_vk_fallback_vert.spv.h"
  #include "vulkan/rsx_vk_fallback_frag.spv.h"
@@ -46201,6 +46249,7 @@ index db64302e..469435b6 100644
  #include <SDL2/SDL.h>
  #include <SDL2/SDL_vulkan.h>
 +#include "../input/host_input_sdl.h"   /* keys and mouse of the own window */
++#include "../input/ps3_sdl_lock.h"     /* cellPad/cellAudio call SDL from a guest thread */
 +/* cellPad.c's block; weak so a build without the pad still links. */
 +__attribute__((weak)) ps3_host_input* ps3_pad_host_input(void)
 +{
@@ -46211,7 +46260,7 @@ index db64302e..469435b6 100644
  
  #include <dlfcn.h>
  #include <pthread.h>
-@@ -86,6 +99,7 @@
+@@ -86,6 +100,7 @@
      X(vkCreateCommandPool) X(vkDestroyCommandPool) X(vkAllocateCommandBuffers) \
      X(vkBeginCommandBuffer) X(vkEndCommandBuffer) X(vkResetCommandBuffer) \
      X(vkCreateFence) X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences) X(vkQueueSubmit) \
@@ -46219,7 +46268,7 @@ index db64302e..469435b6 100644
      X(vkCreateRenderPass) X(vkDestroyRenderPass) X(vkCreateFramebuffer) X(vkDestroyFramebuffer) \
      X(vkCreateShaderModule) X(vkDestroyShaderModule) \
      X(vkCreateDescriptorSetLayout) X(vkDestroyDescriptorSetLayout) \
-@@ -106,7 +120,8 @@
+@@ -106,7 +121,8 @@
   * headless run never depends on a driver that can present. */
  #define VK_WSI_INSTANCE_FNS(X) \
      X(vkDestroySurfaceKHR) X(vkGetPhysicalDeviceSurfaceSupportKHR) \
@@ -46229,7 +46278,7 @@ index db64302e..469435b6 100644
  #define VK_WSI_DEVICE_FNS(X) \
      X(vkCreateSwapchainKHR) X(vkDestroySwapchainKHR) X(vkGetSwapchainImagesKHR) \
      X(vkAcquireNextImageKHR) X(vkQueuePresentKHR)
-@@ -449,10 +464,19 @@ static void vk_present_wait_gpu(void);
+@@ -449,10 +465,19 @@ static void vk_present_wait_gpu(void);
  
  /* VK_DRAW_BATCH (vk_eng_draw): draws recorded into s_vk.cmd and not yet
   * submitted. Anything that records other work, destroys an object or reads
@@ -46251,7 +46300,7 @@ index db64302e..469435b6 100644
  static int vk_eb_active(void);       /* batching decided on and on */
  static u32 vk_eb_max(void);
  static void vk_eb_recorded(void);   /* one more command in the open batch */
-@@ -462,12 +486,12 @@ static int vk_eb_upload(VkImage img, VkBufferImageCopy* region, const void* src,
+@@ -462,12 +487,12 @@ static int vk_eb_upload(VkImage img, VkBufferImageCopy* region, const void* src,
  
  static void vk_destroy_image(vk_image* im)
  {
@@ -46269,7 +46318,7 @@ index db64302e..469435b6 100644
      memset(im, 0, sizeof *im);
  }
  
-@@ -525,10 +549,9 @@ static int vk_create_device_buffer(vk_buffer* b, VkDeviceSize size, VkBufferUsag
+@@ -525,10 +550,9 @@ static int vk_create_device_buffer(vk_buffer* b, VkDeviceSize size, VkBufferUsag
  
  static void vk_destroy_buffer(vk_buffer* b)
  {
@@ -46283,7 +46332,7 @@ index db64302e..469435b6 100644
      memset(b, 0, sizeof *b);
  }
  
-@@ -575,8 +598,29 @@ static void vk_device_idle(void)
+@@ -575,8 +599,29 @@ static void vk_device_idle(void)
  
  /* A full execution and memory dependency on everything submitted before
   * this command buffer, the present's copy included. */
@@ -46313,7 +46362,7 @@ index db64302e..469435b6 100644
      VkMemoryBarrier mb = { .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
                             .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
                             .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT };
-@@ -587,33 +631,234 @@ static void vk_cmd_after_everything(VkCommandBuffer cb)
+@@ -587,33 +632,234 @@ static void vk_cmd_after_everything(VkCommandBuffer cb)
  static int vk_begin(void)
  {
      if (s_eb_pending) vk_eng_flush();
@@ -46331,9 +46380,10 @@ index db64302e..469435b6 100644
 +     * everything here after it. One barrier per command buffer. */
 +    vk_cmd_after_everything(s_vk.cmd);
 +    s_vk.present_order = 0;
-+    return 0;
-+}
-+
+     return 0;
+ }
+ 
+-static int vk_submit_and_wait(void)
 +/* VK_SYNC_STATS=1: every 5 s, how many submit-and-waits ran, how long they blocked, and from which
 + * call sites (return addresses: resolve with addr2line / perf). Finds the waits a frame pays for. */
 +#include <time.h>
@@ -46412,17 +46462,15 @@ index db64302e..469435b6 100644
 +{
 +    if (s_eb_pending) return 1;
 +    for (u32 k = 0; k < s_nslots; k++) if (s_slot[k].pending) return 1;
-     return 0;
- }
- 
--static int vk_submit_and_wait(void)
++    return 0;
++}
++
 +typedef struct { u64 serial; u64 handle; int type; } vk_garbage;
 +static vk_garbage* s_gb;
 +static u32 s_gb_n, s_gb_cap;
 +
 +static void vk_destroy_now(int type, u64 h)
- {
--    VK_CHECK(pvkEndCommandBuffer(s_vk.cmd), "vkEndCommandBuffer");
++{
 +    switch (type) {
 +    case VK_GB_VIEW:        pvkDestroyImageView(s_vk.device, (VkImageView)(uintptr_t)h, NULL); break;
 +    case VK_GB_IMAGE:       pvkDestroyImage(s_vk.device, (VkImage)(uintptr_t)h, NULL); break;
@@ -46434,7 +46482,8 @@ index db64302e..469435b6 100644
 +}
 +
 +static void vk_defer_destroy(int type, u64 h)
-+{
+ {
+-    VK_CHECK(pvkEndCommandBuffer(s_vk.cmd), "vkEndCommandBuffer");
 +    if (!h || !s_vk.device) return;
 +    if (!vk_in_flight()) { vk_destroy_now(type, h); return; }
 +    if (s_gb_n == s_gb_cap) {
@@ -46558,7 +46607,29 @@ index db64302e..469435b6 100644
      VkImageMemoryBarrier b = {
          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
          .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-@@ -1749,7 +1994,7 @@ static void vk_window_open(const char* title)
+@@ -1714,7 +1960,7 @@ static int vk_env_on(const char* name)
+     return v && v[0] && v[0] != '0';
+ }
+ 
+-static void vk_window_drop(const char* why)
++static void vk_window_drop_unlocked(const char* why)
+ {
+     if (why) VK_LOG("window disabled, continuing headless: %s\n", why);
+     if (s_vk.device && pvkDeviceWaitIdle) {
+@@ -1741,15 +1987,19 @@ static void vk_window_drop(const char* why)
+     s_vk.sc_count = 0;
+     s_vk.windowed = 0;
+ }
++static void vk_window_drop(const char* why)
++{   /* SDL video init/quit: the guest PPU thread may be in SDL_InitSubSystem (cellPad, cellAudio) */
++    ps3_sdl_lock(); vk_window_drop_unlocked(why); ps3_sdl_unlock();
++}
+ 
+-static void vk_window_open(const char* title)
++static void vk_window_open_unlocked(const char* title)
+ {
+     if (!vk_env_on("PS3RECOMP_VK_WINDOW")) return;
+     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
          VK_LOG("window disabled, continuing headless: SDL video init failed: %s\n", SDL_GetError());
          return;
      }
@@ -46567,7 +46638,18 @@ index db64302e..469435b6 100644
      if (vk_env_on("PS3RECOMP_VK_FULLSCREEN")) flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
      s_vk.window = SDL_CreateWindow(title && title[0] ? title : "ps3recomp",
                                     SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-@@ -1791,8 +2036,14 @@ static int vk_create_swapchain(void)
+@@ -1775,6 +2025,10 @@ static void vk_window_open(const char* title)
+     VK_LOG("window: SDL video driver '%s', %u surface extension(s)\n",
+            SDL_GetCurrentVideoDriver(), n);
+ }
++static void vk_window_open(const char* title)
++{   /* SDL video init/quit: the guest PPU thread may be in SDL_InitSubSystem (cellPad, cellAudio) */
++    ps3_sdl_lock(); vk_window_open_unlocked(title); ps3_sdl_unlock();
++}
+ 
+ static int vk_create_swapchain(void)
+ {
+@@ -1791,8 +2045,14 @@ static int vk_create_swapchain(void)
      if (nf == 0) { VK_LOG("surface reports no formats\n"); return -1; }
      if (nf > 64) nf = 64;
      VkSurfaceFormatKHR fmts[64];
@@ -46584,7 +46666,7 @@ index db64302e..469435b6 100644
      /* UNORM, not SRGB: the offscreen target holds the guest's values as-is. */
      VkSurfaceFormatKHR fmt = fmts[0];
      if (nf == 1 && fmts[0].format == VK_FORMAT_UNDEFINED) {
-@@ -1833,6 +2084,23 @@ static int vk_create_swapchain(void)
+@@ -1833,6 +2093,23 @@ static int vk_create_swapchain(void)
      for (size_t k = 0; k < 4; k++)
          if (caps.supportedCompositeAlpha & alphas[k]) { alpha = alphas[k]; break; }
  
@@ -46608,7 +46690,7 @@ index db64302e..469435b6 100644
      VkSwapchainKHR old = s_vk.swapchain;
      VkSwapchainCreateInfoKHR sci = {
          .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-@@ -1842,7 +2110,7 @@ static int vk_create_swapchain(void)
+@@ -1842,7 +2119,7 @@ static int vk_create_swapchain(void)
          .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
          .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
          .preTransform = caps.currentTransform, .compositeAlpha = alpha,
@@ -46617,7 +46699,7 @@ index db64302e..469435b6 100644
          .clipped = VK_TRUE, .oldSwapchain = old,
      };
      VkSwapchainKHR sc = VK_NULL_HANDLE;
-@@ -1868,7 +2136,8 @@ static int vk_create_swapchain(void)
+@@ -1868,7 +2145,8 @@ static int vk_create_swapchain(void)
  
      s_vk.sc_extent = ext;
      s_vk.sc_count = n;
@@ -46627,7 +46709,7 @@ index db64302e..469435b6 100644
      return 0;
  }
  
-@@ -2092,6 +2361,9 @@ typedef struct vk_eng_obj {
+@@ -2092,6 +2370,9 @@ typedef struct vk_eng_obj {
      u8       cube;                   /* TEXTURE: six layers, a CUBE view    */
      u8       snapshot;               /* COLOR: a feedback copy, never a target */
      u32      mips;                   /* TEXTURE: levels the image was created with */
@@ -46637,7 +46719,7 @@ index db64302e..469435b6 100644
  } vk_eng_obj;
  
  static vk_eng_obj s_eobj[VK_ENG_MAX_OBJ];
-@@ -2126,12 +2398,20 @@ static VkFormat vk_eng_format(rsx_be_format f, u32* bpp)
+@@ -2126,12 +2407,20 @@ static VkFormat vk_eng_format(rsx_be_format f, u32* bpp)
  /* Colour formats the E2 passes render into: RGBA8 for ordinary and display
   * targets, RGBA16F for SET_SURFACE_FORMAT 0xB HDR targets. Both are required
   * colour attachment formats with blending in Vulkan 1.0. */
@@ -46659,7 +46741,7 @@ index db64302e..469435b6 100644
      default:                            return -1;
      }
  }
-@@ -2171,6 +2451,26 @@ static vk_buffer* vk_stage_get(vk_buffer* b, VkDeviceSize size, VkBufferUsageFla
+@@ -2171,6 +2460,26 @@ static vk_buffer* vk_stage_get(vk_buffer* b, VkDeviceSize size, VkBufferUsageFla
      return b;
  }
  
@@ -46686,7 +46768,7 @@ index db64302e..469435b6 100644
  /* Copy `rows` rows of `w` texels from host memory into a w x h rectangle at
   * (x, y) of one level / layer of an image that is in GENERAL. */
  static int vk_eng_upload_region(VkImage img, u32 layer, u32 mip, u32 x, u32 y,
-@@ -2264,6 +2564,7 @@ static int vk_eng_init(void* user, u32 width, u32 height)
+@@ -2264,6 +2573,7 @@ static int vk_eng_init(void* user, u32 width, u32 height)
  }
  
  static void vk_eng_snapshot_recycle(vk_eng_obj* o);
@@ -46694,7 +46776,7 @@ index db64302e..469435b6 100644
  
  static void vk_eng_release(void* user, u32 handle)
  {
-@@ -2280,6 +2581,15 @@ static void vk_eng_release(void* user, u32 handle)
+@@ -2280,6 +2590,15 @@ static void vk_eng_release(void* user, u32 handle)
          s_eobj[handle].surface = 0;
          if (vk_eng_get(snap, VK_ENG_TEXTURE)) vk_eng_release(user, snap);
      }
@@ -46710,7 +46792,7 @@ index db64302e..469435b6 100644
      if (s_eobj[handle].kind == VK_ENG_COLOR && s_eobj[handle].snapshot) {
          /* Never an attachment, so no framebuffer names it; the image goes
           * back to the pool for the next feedback draw. */
-@@ -2294,21 +2604,31 @@ static void vk_eng_release(void* user, u32 handle)
+@@ -2294,21 +2613,31 @@ static void vk_eng_release(void* user, u32 handle)
  }
  
  static void vk_eng_snapshot_pool_drain(void);
@@ -46744,7 +46826,7 @@ index db64302e..469435b6 100644
  }
  
  static u32 vk_eng_color_target_create(void* user, rsx_be_format fmt, u32 w, u32 h,
-@@ -2334,17 +2654,26 @@ static u32 vk_eng_color_target_create(void* user, rsx_be_format fmt, u32 w, u32
+@@ -2334,17 +2663,26 @@ static u32 vk_eng_color_target_create(void* user, rsx_be_format fmt, u32 w, u32
      o->kind = VK_ENG_COLOR; o->fmt = vf; o->bpp = bpp; o->w = w; o->h = h;
      /* UNDEFINED -> GENERAL, then the guest's own bytes when the engine could
       * resolve them, else transparent black so the contents are defined. */
@@ -46773,7 +46855,7 @@ index db64302e..469435b6 100644
  static u32 vk_eng_depth_target_create(void* user, u32 w, u32 h)
  {
      (void)user;
-@@ -2354,18 +2683,20 @@ static u32 vk_eng_depth_target_create(void* user, u32 w, u32 h)
+@@ -2354,18 +2692,20 @@ static u32 vk_eng_depth_target_create(void* user, u32 w, u32 h)
      vk_eng_obj* o = &s_eobj[hd];
      if (vk_create_image(&o->im, s_vk.depth_format, w, h,
                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
@@ -46797,7 +46879,7 @@ index db64302e..469435b6 100644
      return hd;
  }
  
-@@ -2419,12 +2750,96 @@ static void vk_eng_clear_depth_stencil(void* user, u32 depth, u32 flags,
+@@ -2419,12 +2759,96 @@ static void vk_eng_clear_depth_stencil(void* user, u32 depth, u32 flags,
      else vk_submit_and_wait();
  }
  
@@ -46894,7 +46976,7 @@ index db64302e..469435b6 100644
      if (s_eb_pending) vk_eng_flush();   /* the present records on its own buffer */
      vk_eng_obj* o = vk_eng_get(surface, VK_ENG_COLOR);
      pthread_mutex_lock(&s_vk.present_mu);
-@@ -2472,7 +2887,8 @@ static void vk_eng_readback(void* user, u32 surface, u32 x, u32 y, u32 w, u32 h,
+@@ -2472,7 +2896,8 @@ static void vk_eng_readback(void* user, u32 surface, u32 x, u32 y, u32 w, u32 h,
      const size_t tight = (size_t)w * o->bpp;
      vk_buffer* const st = vk_stage_get(&s_rb_stage, (VkDeviceSize)tight * h, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
      if (!st) return;
@@ -46904,7 +46986,7 @@ index db64302e..469435b6 100644
          vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
          VkBufferImageCopy region = {
              .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-@@ -2495,6 +2911,94 @@ static void vk_eng_readback(void* user, u32 surface, u32 x, u32 y, u32 w, u32 h,
+@@ -2495,6 +2920,94 @@ static void vk_eng_readback(void* user, u32 surface, u32 x, u32 y, u32 w, u32 h,
      }
  }
  
@@ -46999,7 +47081,7 @@ index db64302e..469435b6 100644
  /* ---- E3: textures ---------------------------------------------------------
   * The engine decodes every level to host rows (rsx_texture_decode) and hands
   * them over one upload each; the crossbar is a property of the view, so it
-@@ -2540,9 +3044,12 @@ static u32 vk_eng_texture_create(void* user, rsx_be_format fmt, u32 w, u32 h,
+@@ -2540,9 +3053,12 @@ static u32 vk_eng_texture_create(void* user, rsx_be_format fmt, u32 w, u32 h,
      o->kind = VK_ENG_TEXTURE; o->fmt = vf; o->w = w; o->h = h; o->cube = (u8)cube; o->mips = mips;
      o->bpp = bc ? 0 : bpp; o->block = bc ? bpp : 0;
      /* UNDEFINED -> GENERAL for every level and face before the uploads arrive. */
@@ -47015,7 +47097,7 @@ index db64302e..469435b6 100644
      return hd;
  fail:
      vk_destroy_image(&o->im);
-@@ -2647,7 +3154,8 @@ static u32 vk_eng_color_snapshot(void* user, u32 surface)
+@@ -2647,7 +3163,8 @@ static u32 vk_eng_color_snapshot(void* user, u32 surface)
      }
      o->kind = VK_ENG_COLOR; o->snapshot = 1;
      o->fmt = t->fmt; o->bpp = t->bpp; o->w = t->w; o->h = t->h;
@@ -47025,7 +47107,7 @@ index db64302e..469435b6 100644
      vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT,
                       reused ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED);
      vk_barrier_image(t->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
-@@ -2660,7 +3168,7 @@ static u32 vk_eng_color_snapshot(void* user, u32 surface)
+@@ -2660,7 +3177,7 @@ static u32 vk_eng_color_snapshot(void* user, u32 surface)
                      o->im.img, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
      /* The copy, made visible to whatever samples it next. */
      vk_barrier_image(o->im.img, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL);
@@ -47034,7 +47116,7 @@ index db64302e..469435b6 100644
      return hd;
  }
  
-@@ -2705,9 +3213,10 @@ static u32 vk_eng_depth_snapshot(void* user, u32 depth, u32 w, u32 h)
+@@ -2705,9 +3222,10 @@ static u32 vk_eng_depth_snapshot(void* user, u32 depth, u32 w, u32 h)
          t->kind = VK_ENG_TEXTURE; t->fmt = VK_FORMAT_R32_SFLOAT; t->bpp = 4; t->w = w; t->h = h;
          z = vk_eng_get(depth, VK_ENG_DEPTH);          /* same slot; reload for clarity */
          z->surface = snap;
@@ -47047,7 +47129,7 @@ index db64302e..469435b6 100644
      }
  
      /* The bounce buffer stays (device-local when the device has it, grown as
-@@ -2765,7 +3274,7 @@ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32
+@@ -2765,7 +3283,7 @@ static int vk_eng_depth_readback(void* user, u32 depth, u32 x, u32 y, u32 w, u32
          return -1;
      vk_buffer* const st = vk_stage_get(&s_rb_stage, (VkDeviceSize)w * h * 4u, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
      if (!st) return -1;
@@ -47056,7 +47138,7 @@ index db64302e..469435b6 100644
      if (!rc) {
          vk_barrier_image(z->im.img, s_vk.depth_aspect, VK_IMAGE_LAYOUT_GENERAL);
          VkBufferImageCopy region = {
-@@ -2860,9 +3369,9 @@ static u32 s_esamp_count;
+@@ -2860,9 +3378,9 @@ static u32 s_esamp_count;
  
  static void vk_eng_drop_framebuffers(void)
  {
@@ -47068,7 +47150,7 @@ index db64302e..469435b6 100644
      s_e2.fb_count = 0;
  }
  
-@@ -3070,11 +3579,12 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
+@@ -3070,11 +3588,12 @@ static u32 vk_eng_pipeline_create(void* user, const char* vs_hlsl, const char* p
  static void vk_eng_pipeline_release(void* user, u32 pipeline)
  {
      (void)user;
@@ -47083,7 +47165,7 @@ index db64302e..469435b6 100644
      if (P->vs) pvkDestroyShaderModule(s_vk.device, P->vs, NULL);
      if (P->fs) pvkDestroyShaderModule(s_vk.device, P->fs, NULL);
      memset(P, 0, sizeof *P);
-@@ -3339,13 +3849,15 @@ static VkImageView vk_eng_scratch_depth(u32 w, u32 h)
+@@ -3339,13 +3858,15 @@ static VkImageView vk_eng_scratch_depth(u32 w, u32 h)
      vk_destroy_image(&s_e2.scratch_depth);
      if (vk_create_image(&s_e2.scratch_depth, s_vk.depth_format, w, h,
                          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -47101,7 +47183,7 @@ index db64302e..469435b6 100644
      s_e2.scratch_w = w; s_e2.scratch_h = h;
      return s_e2.scratch_depth.view;
  }
-@@ -3429,28 +3941,38 @@ static VkImageView vk_eng_dummy_cube_view(void)
+@@ -3429,28 +3950,38 @@ static VkImageView vk_eng_dummy_cube_view(void)
   * its time blocked on the GPU, the RSX ring drained one draw at a time and the
   * SPU geometry jobs waited for ring space. Batched, a draw takes slices of
   * three ring buffers and a descriptor set from a pool, records into the open
@@ -47153,7 +47235,7 @@ index db64302e..469435b6 100644
  
  static int vk_eb_on(void)
  {
-@@ -3471,15 +3993,18 @@ static int vk_eb_on(void)
+@@ -3471,15 +4002,18 @@ static int vk_eb_on(void)
      };
      VkDescriptorPoolCreateInfo pci = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                                         .maxSets = VK_EB_MAX_SETS, .poolSizeCount = 3, .pPoolSizes = ps };
@@ -47180,7 +47262,7 @@ index db64302e..469435b6 100644
      s_eb.on = 1;
      return 1;
  }
-@@ -3489,11 +4014,15 @@ static int vk_eb_on(void)
+@@ -3489,11 +4023,15 @@ static int vk_eb_on(void)
  static void vk_eb_release(void)
  {
      if (s_eb_pending) vk_eng_flush();
@@ -47201,7 +47283,7 @@ index db64302e..469435b6 100644
      memset(&s_eb, 0, sizeof s_eb);
      s_eb.on = -1;
  }
-@@ -3515,34 +4044,40 @@ static int vk_eb_upload(VkImage img, VkBufferImageCopy* region, const void* src,
+@@ -3515,34 +4053,40 @@ static int vk_eb_upload(VkImage img, VkBufferImageCopy* region, const void* src,
      if (!vk_eb_active()) return -2;
      const VkDeviceSize bytes = (VkDeviceSize)tight * rows;
      if (!bytes || bytes > VK_EB_SB_BYTES) return -2;
@@ -47250,7 +47332,7 @@ index db64302e..469435b6 100644
  static VkDeviceSize vk_eb_take(VkDeviceSize* head, VkDeviceSize cap, VkDeviceSize bytes, VkDeviceSize align)
  {
      const VkDeviceSize at = (*head + align - 1u) / align * align;
-@@ -3610,11 +4145,223 @@ static VkDescriptorSet vk_eng_write_descriptors_to(const vk_eng_pipe* P, VkDescr
+@@ -3610,11 +4154,223 @@ static VkDescriptorSet vk_eng_write_descriptors_to(const vk_eng_pipe* P, VkDescr
      return set;
  }
  
@@ -47477,7 +47559,7 @@ index db64302e..469435b6 100644
      if (topology < RSX_TOPOLOGY_POINTS || topology > RSX_TOPOLOGY_TRIANGLE_STRIP) return;
      vk_eng_pipe* P = &s_epipe[s_e2.pipeline - 1];
      if (!P->used || stride != P->stride) return;
-@@ -3644,8 +4391,10 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+@@ -3644,8 +4400,10 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
      VkFramebuffer fb = vk_eng_framebuffer(rp, s_eng_bound.rt, n, dview, dkey, w, h);
      if (!pipe || !rp || !fb) return;
  
@@ -47490,7 +47572,7 @@ index db64302e..469435b6 100644
      VkBuffer vbuf = s_vk.vertices.buf, ibuf = s_e2.indices.buf;
      VkDeviceSize voff = 0, ioff = 0;
      VkDescriptorSet set = VK_NULL_HANDLE;
-@@ -3656,23 +4405,23 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+@@ -3656,23 +4414,23 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
          /* Slices of the rings and a set from the pool; a full one flushes the
           * batch (which empties them all) and the draw takes its slices again. */
          for (int tries = 0; tries < 2; tries++) {
@@ -47523,7 +47605,7 @@ index db64302e..469435b6 100644
                      break;
                  }
                  set = VK_NULL_HANDLE;
-@@ -3682,18 +4431,25 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+@@ -3682,18 +4440,25 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
          }
          if (batched && !set) batched = 0;
      }
@@ -47555,7 +47637,7 @@ index db64302e..469435b6 100644
          if (ibytes) {
              if (vk_eng_ensure_indices(ibytes)) return;
              memcpy(s_e2.indices.ptr, indices, (size_t)ibytes);
-@@ -3706,14 +4462,17 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+@@ -3706,14 +4471,17 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
          if (!set) return;
          if (vk_begin()) return;
      }
@@ -47581,7 +47663,7 @@ index db64302e..469435b6 100644
      pvkCmdBindPipeline(s_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
      VkViewport vp = { 0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f };
      if (s_e2.have_vp && s_e2.vp[2] > 0.0f && s_e2.vp[3] > 0.0f) {
-@@ -3736,19 +4495,48 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
+@@ -3736,19 +4504,48 @@ static void vk_eng_draw(void* user, rsx_topology topology, const void* vertices,
      pvkCmdBindDescriptorSets(s_vk.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               P->cube_mask ? s_e2.split_pipe_layout : s_g.pipe_layout,
                               0, 1, &set, 0, NULL);
@@ -47632,7 +47714,7 @@ index db64302e..469435b6 100644
  static const rsx_draw_backend s_vk_engine_backend = {
      .user                 = NULL,
      .init                 = vk_eng_init,
-@@ -3783,8 +4571,12 @@ static const rsx_draw_backend s_vk_engine_backend = {
+@@ -3783,8 +4580,12 @@ static const rsx_draw_backend s_vk_engine_backend = {
      .readback             = vk_eng_readback,
      .depth_readback       = vk_eng_depth_readback,
      .color_target_write   = vk_eng_color_target_write,
@@ -47647,7 +47729,7 @@ index db64302e..469435b6 100644
      .texture_upload_ordered = 1,
  };
  
-@@ -3894,9 +4686,21 @@ static int vk_init_all(u32 width, u32 height, const char* title)
+@@ -3894,9 +4695,21 @@ static int vk_init_all(u32 width, u32 height, const char* title)
                                          .commandPool = s_vk.pool,
                                          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                                          .commandBufferCount = 1 };
@@ -47671,7 +47753,7 @@ index db64302e..469435b6 100644
      /* The present's own (see vk_state). */
      VK_CHECK(pvkCreateCommandPool(s_vk.device, &pci, NULL, &s_vk.present_pool), "vkCreateCommandPool");
      cai.commandPool = s_vk.present_pool;
-@@ -3963,6 +4767,15 @@ int rsx_vulkan_backend_init(u32 width, u32 height, const char* title)
+@@ -3963,6 +4776,15 @@ int rsx_vulkan_backend_init(u32 width, u32 height, const char* title)
       * Either way PS3RECOMP_RSX_ENGINE=dispatch|vtable overrides. */
      rsx_draw_engine_set_backend(&s_vk_engine_backend);
      rsx_draw_engine_set_default(s_g.on ? 1 : 0);
@@ -47687,7 +47769,7 @@ index db64302e..469435b6 100644
      if (rsx_draw_engine_enabled() && rsx_draw_engine_init(s_vk.width, s_vk.height) == 0)
          s_vk.eng_active = 1;
      else
-@@ -3979,6 +4792,9 @@ void rsx_vulkan_backend_shutdown(void)
+@@ -3979,6 +4801,9 @@ void rsx_vulkan_backend_shutdown(void)
      if (rsx_get_backend() == &s_vulkan_backend) rsx_set_backend(NULL);
      if (s_vk.eng_active) { rsx_draw_engine_shutdown(); s_vk.eng_active = 0; }
      rsx_draw_engine_set_backend(NULL);
@@ -47697,7 +47779,7 @@ index db64302e..469435b6 100644
      if (s_vk.windowed && s_vk.swapchain && s_vk.presented && s_vk.hold_seconds > 0.0) {
          VK_LOG("holding the last frame on screen for %.1f s "
                 "(Esc or closing the window ends it early)\n", s_vk.hold_seconds);
-@@ -3991,6 +4807,10 @@ void rsx_vulkan_backend_shutdown(void)
+@@ -3991,6 +4816,10 @@ void rsx_vulkan_backend_shutdown(void)
      if (s_vk.windowed || s_vk.window) vk_window_drop(NULL);
      if (s_vk.device) {
          vk_device_idle();
@@ -47708,7 +47790,7 @@ index db64302e..469435b6 100644
          vk_guest_shutdown();
          for (int i = 0; i < VK_PIPELINE_SLOTS; i++)
              if (s_vk.pipelines[i]) pvkDestroyPipeline(s_vk.device, s_vk.pipelines[i], NULL);
-@@ -4010,7 +4830,14 @@ void rsx_vulkan_backend_shutdown(void)
+@@ -4010,7 +4839,14 @@ void rsx_vulkan_backend_shutdown(void)
          vk_destroy_image(&s_vk.color);
          vk_destroy_buffer(&s_vk.vertices);
          vk_destroy_buffer(&s_vk.readback);
@@ -47724,12 +47806,13 @@ index db64302e..469435b6 100644
          if (s_vk.pool)  pvkDestroyCommandPool(s_vk.device, s_vk.pool, NULL);
          if (s_vk.present_fence) pvkDestroyFence(s_vk.device, s_vk.present_fence, NULL);
          if (s_vk.window_fence)  pvkDestroyFence(s_vk.device, s_vk.window_fence, NULL);
-@@ -4030,10 +4857,17 @@ int rsx_vulkan_backend_pump_messages(void)
+@@ -4030,10 +4866,19 @@ int rsx_vulkan_backend_pump_messages(void)
      if (!s_vk.windowed) return 0;
      int quit = 0;
      SDL_Event e;
 +    /* Keys and mouse go to the pad (host_input_sdl.h): Esc is the game's (START: pause), F11 and
 +     * Alt+Enter toggle full screen; closing the window quits. */
++    ps3_sdl_lock();
 +    if (!s_hisdl.in) {
 +        s_hisdl.in = ps3_pad_host_input();
 +        s_hisdl.focused = s_vk.window && (SDL_GetWindowFlags(s_vk.window) & SDL_WINDOW_INPUT_FOCUS) != 0;
@@ -47740,6 +47823,7 @@ index db64302e..469435b6 100644
 +        else hisdl_event(&s_hisdl, &e, s_vk.window);
      }
 +    hisdl_tick(&s_hisdl, s_vk.window);
++    ps3_sdl_unlock();
      return quit ? -1 : 0;
  }
  
@@ -48301,3 +48385,33 @@ index 00000000..ade80652
 +}
 +
 +#endif /* PS3RECOMP_HOST_INPUT_SDL_H */
+diff --git a/libs/input/ps3_sdl_lock.h b/libs/input/ps3_sdl_lock.h
+new file mode 100644
+index 00000000..10aed4ce
+--- /dev/null
++++ b/libs/input/ps3_sdl_lock.h
+@@ -0,0 +1,24 @@
++/* One lock for SDL calls made from more than one host thread.
++ *
++ * On Linux the Vulkan window's events are pumped by the vblank ticker thread
++ * (SDL_PollEvent), while cellPadInit / cellAudioInit run on a guest PPU thread
++ * and call SDL_InitSubSystem, which SDL does not make thread-safe: the two met
++ * once as heap corruption ("malloc(): unaligned tcache chunk detected") inside
++ * cellPadInit at boot. Every such SDL call is made under this lock. Windows
++ * pumps Win32 messages and macOS pumps on the main queue, so neither runs SDL
++ * on two threads; there it is a no-op.
++ *
++ * Recursive, and taken last: nothing is locked while it is held, so it cannot
++ * order against cellPad's pad_lock (always taken before it). */
++#ifndef PS3_SDL_LOCK_H
++#define PS3_SDL_LOCK_H
++#if defined(__linux__)
++#include <pthread.h>
++__attribute__((weak)) pthread_mutex_t g_ps3_sdl_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
++static inline void ps3_sdl_lock(void)   { pthread_mutex_lock(&g_ps3_sdl_mutex); }
++static inline void ps3_sdl_unlock(void) { pthread_mutex_unlock(&g_ps3_sdl_mutex); }
++#else
++static inline void ps3_sdl_lock(void)   {}
++static inline void ps3_sdl_unlock(void) {}
++#endif
++#endif

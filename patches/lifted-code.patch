@@ -4268,12 +4268,12 @@ diff -ruN a/spu/spu_0001_at_0176C200/spu_recomp.c b/spu/spu_0001_at_0176C200/spu
 +    return on;
 +}
 +static int des_dispq_gate(const spu_context* ctx)
-+{
-+    static const uint16_t pcs[] = { 0x4808, 0x4618, 0x4694, 0x5120, 0x4804, 0x4958, 0x49C0, 0x4A08, 0x3C90, 0x3D18, 0xC358, 0xC438, 0xC490, 0xC408, 0xC418 };
++{   /* the 15 entries' stack-reset hints, folded again only when the registration count moves (it is published after the hint) */
++    static const uint16_t pcs[] = { 0x4808, 0x4618, 0x4694, 0x5120, 0x4804, 0x4958, 0x49C0, 0x4A08, 0x3C90, 0x3D18, 0xC358, 0xC438, 0xC490, 0xC408, 0xC418 }; static SPU_THREAD_LOCAL unsigned t_n = ~0u; static SPU_THREAD_LOCAL int t_hint; extern unsigned g_spu_stack_reset_count;
 +    if (g_spu_direct <= 0 || !ctx->steps || ctx->int_enable || g_yz_lockstep_on != 0) return 0;
-+    for (unsigned i = 0; i < sizeof pcs / sizeof pcs[0]; i++)
-+        if (g_spu_stack_reset_hint[(pcs[i] >> 2) & 1023u]) return 0;
-+    return 1;
++    const unsigned n = __atomic_load_n(&g_spu_stack_reset_count, __ATOMIC_ACQUIRE);
++    if (__builtin_expect(n != t_n, 0)) { t_hint = 0; for (unsigned i = 0; i < sizeof pcs / sizeof pcs[0]; i++) t_hint |= g_spu_stack_reset_hint[(pcs[i] >> 2) & 1023u]; t_n = n; }
++    return !t_hint;
 +}
 +/* The indirect branch to a command handler is a plain lookup -- nothing spu_indirect_branch does
 + * besides finding the function applies (policy module, resident task / overlay / module image,
