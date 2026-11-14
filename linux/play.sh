@@ -16,6 +16,7 @@
 #                            the game's shaders (black or missing geometry, "D3DCompile" errors in the log)
 # Environment: DES_FPS=30|50|60|unlimited|31-240 (a Steam Deck defaults to 30), DES_MOVIES=0, DES_NAME,
 #              DES_GAME, DES_BOSS_RUSH=1, DES_RECORD=0, DES_GOD=1 -- all as in PLAY.bat.
+#              DES_FULLSCREEN=0|1 (a Steam Deck defaults to 1: borderless full screen).
 set -u
 D=$(cd "$(dirname "$0")/.." && pwd)
 cd "$D"
@@ -26,11 +27,11 @@ die() { echo "$*"; exit 1; }
 # a Linux path as the Windows program sees it (Wine maps / to drive Z:)
 winpath() { printf 'Z:%s' "$1" | sed 's|/|\\|g'; }
 
-EXE="$D/port/build_opt/DemonsSoulsRecomp.exe"
+EXE="${DS_EXE:-$D/port/build_opt/DemonsSoulsRecomp.exe}"   # DS_EXE=<path>: run another build (A/B tests)
 [ -f "$EXE" ] || die "DemonsSoulsRecomp.exe is not built yet. Run linux/setup.sh (or the AppImage) first."
 
 # --- which Proton ------------------------------------------------------------------------------
-PFX="$D/wineprefix"
+PFX="${DS_PREFIX:-$D/wineprefix}"   # DS_PREFIX=<dir>: another Wine prefix (e.g. to try a different Proton)
 mkdir -p "$PFX" "$D/logs"
 find_umu() {
   command -v umu-run 2>/dev/null && return 0
@@ -116,7 +117,7 @@ export PS3_HDD1_ROOT="$(winpath "$D/hdd1")"
 export RSX_LIVE_DRAW=1 GCM_NO_TITLE_RECYCLE=1 PS3_NP_STRICT_OFFLINE=1 SPU_INTERP_UNLIFTED=1 SPURS_JC_EVENTS=0
 export PS3_DEV_FLASH="$(winpath "$D/no_flash")"
 if [ "${DES_MOVIES:-}" = 0 ]; then export PS3_NO_SAIL=1; else unset PS3_NO_SAIL; fi
-export PAD_KEYMAP=souls OSK_TEXT="${DES_NAME:-}" PAD_SCRIPT= PS3_PRIO_START=1 LD_PRESENT_PACE=0.85
+export PAD_KEYMAP=souls OSK_TEXT="${DES_NAME:-}" PAD_SCRIPT="${PAD_SCRIPT:-}" PS3_PRIO_START=1 LD_PRESENT_PACE=0.85
 if [ -f "$D/port/build_opt/no_avx2.txt" ]; then unset PS3_REQUIRE_AVX2; else export PS3_REQUIRE_AVX2=1; fi
 export LD_F12_CAPTURE="$(winpath "$D/captures")"
 
@@ -125,6 +126,38 @@ DECK=
 case "$(cat /sys/class/dmi/id/board_vendor 2>/dev/null)/$(cat /sys/class/dmi/id/product_name 2>/dev/null)" in
   Valve/Jupiter|Valve/Galileo) DECK=1 ;;
 esac
+# An idle SPU dispatcher polls its event channel while HighGraphics writes the queue line it polls;
+# a longer pause per empty poll gives that line back. Deck, uncapped: 16 (the default) 31-33 fps with
+# ~200 frames over 50 ms a minute, 128: 34 fps with ~100 (2 runs each).
+[ -n "$DECK" ] && export SPU_IDLE_PAUSE="${SPU_IDLE_PAUSE:-128}"
+# ...and an SPU that has polled with no work for 200 polls in a row sleeps 50 us per poll (Wine sleeps
+# that precisely). Deck, uncapped: 40-75 frames over 50 ms per run against 79-237, 5-15% less CPU.
+[ -n "$DECK" ] && export SPU_IDLE_SLEEP_US="${SPU_IDLE_SLEEP_US:-50}"
+# Steam Deck: start in borderless full screen (F11 or Alt+Enter toggles it; DES_FULLSCREEN=0 = windowed).
+[ -n "$DECK" ] && export DES_FULLSCREEN="${DES_FULLSCREEN:-1}"
+# Steam Deck: the 15 W the CPU and GPU share goes to the CPU here, and the GPU's automatic clock then sits
+# at 200 MHz while it is ~90% busy. Pinned at 800 MHz the GPU has room and the CPU keeps nearly all its
+# clock (Boletaria, uncapped: 32.9 -> 34.5 fps; the native Vulkan build 28.5 -> 35.8; 500 MHz is far
+# slower, 1100 and 1600 no faster). DES_GPU_CLOCK=<MHz> pins it for the session the way Steam's "Manual
+# GPU clock" does, through SteamOS's own helper, and puts it back to automatic when the game exits;
+# DES_GPU_CLOCK=auto leaves it alone. Nothing is changed when a manual clock is already set (Steam's).
+GPU_DEV=/sys/class/drm/card0/device GPU_PRIV=/usr/bin/steamos-polkit-helpers/steamos-priv-write
+gpu_clock_restore() { "$GPU_PRIV" "$GPU_DEV/power_dpm_force_performance_level" auto >/dev/null 2>&1; }
+if [ -n "$DECK" ] && [ "${DES_GPU_CLOCK:-800}" != auto ] && [ -x "$GPU_PRIV" ] &&
+   [ -f "$GPU_DEV/pp_od_clk_voltage" ] && [ "$(cat "$GPU_DEV/power_dpm_force_performance_level" 2>/dev/null)" = auto ]; then
+  GC=${DES_GPU_CLOCK:-800}
+  case "$GC" in *[!0-9]*|'') die "DES_GPU_CLOCK=$GC: use a clock in MHz (200-1600) or auto." ;; esac
+  if "$GPU_PRIV" "$GPU_DEV/power_dpm_force_performance_level" manual >/dev/null 2>&1 &&
+     "$GPU_PRIV" "$GPU_DEV/pp_od_clk_voltage" "s 0 $GC" >/dev/null 2>&1 &&
+     "$GPU_PRIV" "$GPU_DEV/pp_od_clk_voltage" "s 1 $GC" >/dev/null 2>&1 &&
+     "$GPU_PRIV" "$GPU_DEV/pp_od_clk_voltage" c >/dev/null 2>&1; then
+    trap gpu_clock_restore EXIT
+    trap 'exit 130' INT TERM HUP
+    echo "GPU clock pinned at $GC MHz for this session (DES_GPU_CLOCK=auto turns this off)."
+  else
+    gpu_clock_restore
+  fi
+fi
 # Refresh rate of the active display (xrandr marks it with *); 60 when it cannot tell (gamescope).
 REFRESH=$(xrandr --current 2>/dev/null | sed -n 's/.* \([0-9][0-9]*\)\.[0-9]*\*.*/\1/p' | head -n 1)
 REFRESH=${REFRESH:-60}
@@ -184,7 +217,8 @@ if [ "${DES_RECORD:-}" != 0 ]; then
   mkdir -p "$PD"
   ls -1d "$D"/perf/*/ 2>/dev/null | sort -r | tail -n +11 | while read -r old; do rm -rf "$old"; done
   export DES_PERF=1 LD_PRESENT_LOG="$(winpath "$PD/perf.txt")" LD_PRESENT_LOG_FROM=0 LD_PRESENT_LOG_SECS=0
-  export DES_PERF_STACKS="${DES_PERF_STACKS:-1}" DES_PERF_STACK_THREADS="${DES_PERF_STACK_THREADS:-HighGraphics}"
+  # stack sampling (RtlVirtualUnwind on suspended threads) crashes under Wine/Proton: off by default here
+  export DES_PERF_STACKS="${DES_PERF_STACKS:-0}" DES_PERF_STACK_THREADS="${DES_PERF_STACK_THREADS:-HighGraphics}"
   echo "Recording frame timing: press F8 in the game right after any stutter you see."
 fi
 
