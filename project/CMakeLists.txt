@@ -80,6 +80,10 @@ endif()
 if(MSVC AND CMAKE_C_COMPILER_ID MATCHES "Clang")
     add_compile_options(/clang:-falign-functions=64 /clang:-falign-loops=64)
 endif()
+# The native Linux build (clang driver) gets the same alignment.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-falign-functions=64 -falign-loops=64)
+endif()
 
 # ---------------------------------------------------------------------------
 # ps3recomp runtime library
@@ -352,12 +356,20 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set(DS_PPU_SIMD "${DS_PPU_SIMD};-mavx2;-mfma")
     endif()
 endif()
+# The native Linux build on x86-64 (clang driver): the same fix 66 flags, spelt for it. Its
+# non-MSVC COMPILE_OPTIONS below already carry -ffp-contract=off, which -mfma needs.
+if(NOT MSVC AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    set(DS_PPU_SIMD ";-msse4.1;-fno-stack-protector")
+    if(DS_AVX2)
+        set(DS_PPU_SIMD "${DS_PPU_SIMD};-mavx2;-mfma")
+    endif()
+endif()
 if(MSVC)
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "/w;/bigobj${DS_PPU_SIMD}")
 else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "-w;-ffp-contract=off")
+        COMPILE_OPTIONS "-w;-ffp-contract=off${DS_PPU_SIMD}")
 endif()
 
 # The lifted PPU units HighGraphics spends ~90% of its lifted-code time in
@@ -370,7 +382,7 @@ foreach(u IN LISTS DS_PPU_O2_UNITS)
     if(MSVC)
         set_source_files_properties("${RECOMP_DIR}/ppu_recomp_${u}.cpp" PROPERTIES COMPILE_OPTIONS "/w;/bigobj${DS_PPU_SIMD};-O2")
     else()
-        set_source_files_properties("${RECOMP_DIR}/ppu_recomp_${u}.cpp" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off;-O2")
+        set_source_files_properties("${RECOMP_DIR}/ppu_recomp_${u}.cpp" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off${DS_PPU_SIMD};-O2")
     endif()
 endforeach()
 

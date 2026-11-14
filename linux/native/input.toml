@@ -1,0 +1,46 @@
+# Demon's Souls, native Linux: keyboard + mouse layout (PS3_INPUT_MAP, libs/input/pad_input_map.h).
+# The same keys as the Windows build (README "Controls"). Edit freely: a control left out keeps the
+# toolkit's built-in default. Key names are the Mac's (pad_input_map.h lists them), by position on a
+# US keyboard: "Option" is Alt, "Control" is Ctrl. Esc releases a captured mouse and still reaches the
+# game; F11 or Alt+Enter toggles full screen.
+
+[keyboard]
+ls_up    = "W"
+ls_down  = "S"
+ls_left  = "A"
+ls_right = "D"
+rs_up    = "I"
+rs_down  = "K"
+rs_left  = "J"
+rs_right = "L"
+r2       = "Shift"                 # strong attack
+l2       = "Control"               # parry
+circle   = "Space"                 # roll / dash / back
+cross    = "E"                     # interact / confirm
+triangle = "F"                     # two-hand
+square   = "R"                     # use item
+r3       = "Tab"                   # lock on
+up       = "Up"
+down     = "Down"
+left     = "Left"
+right    = "Right"
+start    = "Return, KeypadEnter"
+select   = "Backspace"
+r1       = ""                      # attack and block are on the mouse
+l1       = ""
+l3       = ""
+
+[mouse_buttons]
+r1 = "Left"                        # attack
+l1 = "Right"                       # block
+r3 = "Middle"                      # lock on
+up   = "WheelUp"
+down = "WheelDown"
+
+[mouse]
+camera      = true
+sensitivity = 1.0
+invert_x    = false
+invert_y    = false
+deadzone    = 30
+capture     = true                 # a click in the window captures the cursor

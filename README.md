@@ -83,6 +83,12 @@ non-Steam game, with *Start in* set to `~/DemonsSoulsRecomp` and no forced Proto
 checkout** instead: install Python 3.10+, git, and clang + lld 17 or newer, then run
 `sh linux/setup.sh /path/to/image.iso` and `sh linux/play.sh`. Troubleshooting: [docs/LINUX.md](docs/LINUX.md).
 
+**Native Linux build (experimental):** the game as a Linux program drawn with Vulkan, with no Proton. On
+the Steam Deck it is a little faster than Proton, and most areas reach 60 fps. Build it with
+`linux/native/build.sh`, and play with `python3 linux/native/launcher.py` (a launcher window) or
+`linux/native/play.sh`. So far it is tested on the Steam Deck only:
+[docs/LINUX_NATIVE.md](docs/LINUX_NATIVE.md).
+
 ### macOS (Apple silicon)
 
 A native arm64 build on Metal (by erikomis). **It is playable, but very behind on updates:** most of the
