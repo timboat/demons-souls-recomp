@@ -68,6 +68,7 @@ struct Settings {
     bool shadow = false;      // LD_RES_SCALE_SHADOW
     int game = 0;             // GAME_DIRS
     bool fullscreen = false, movies = true, god = false, record = true, dump = false;
+    bool easy = false;        // DES_EASY: Easy mode, the player takes half the damage from hits (F7, NOTES fix 164)
     bool by_letter = false, pin = true;
     bool no_rebuild = false;  // DES_NO_REBUILD: after an update, play the build there is
     bool skip_intro = false;  // DES_SKIP_INTRO: straight to PRESS START
@@ -118,6 +119,9 @@ static void load_keys() {
         wchar_t buf[64];
         GetPrivateProfileStringW(L"controls", ACTIONS[a].name, L"\x7f", buf, 64, g_ini.c_str());
         split_keys(wcscmp(buf, L"\x7f") ? wstring(buf) : wstring(ACTIONS[a].def), g_keys[a]);
+        for (wstring& k : g_keys[a])   // F7 is the Easy mode key now (fix 164): an action set to it before loses it
+            if (k == L"F7") k.clear();
+        if (g_keys[a][0].empty()) { g_keys[a][0] = g_keys[a][1]; g_keys[a][1].clear(); }
     }
 }
 static void save_keys() {
@@ -175,6 +179,7 @@ static void load_settings() {
     s.fullscreen = ini_int(L"fullscreen", s.fullscreen) != 0;
     s.movies = ini_int(L"movies", s.movies) != 0;
     s.god = ini_int(L"god_mode", s.god) != 0;
+    s.easy = ini_int(L"easy_mode", s.easy) != 0;
     s.record = ini_int(L"record", s.record) != 0;
     s.dump = ini_int(L"dump_textures", s.dump) != 0;
     s.by_letter = ini_int(L"keys_by_letter", s.by_letter) != 0;
@@ -205,6 +210,7 @@ static void save_settings() {
     ini_put(L"fullscreen", s.fullscreen);
     ini_put(L"movies", s.movies);
     ini_put(L"god_mode", s.god);
+    ini_put(L"easy_mode", s.easy);
     ini_put(L"record", s.record);
     ini_put(L"dump_textures", s.dump);
     ini_put(L"keys_by_letter", s.by_letter);
@@ -302,6 +308,7 @@ static wstring game_env(const Settings& s, const LangEnv* lang) {
     envif(L"DES_FULLSCREEN", s.fullscreen, L"1");
     envif(L"DES_MOVIES", !s.movies, L"0");
     envif(L"DES_GOD", s.god, L"1");
+    envif(L"DES_EASY", s.easy, L"1");
     envif(L"DES_RECORD", !s.record, L"0");
     envif(L"LD_TEX_DUMP", s.dump, L"1");
     envif(L"PAD_KEYS_BY_LETTER", s.by_letter, L"1");
@@ -436,7 +443,7 @@ static HANDLE start_game(const Settings& s, const LangEnv* lang) {
 enum {
     ID_PLAY = IDOK, ID_FPS = 100, ID_CUSTOM, ID_FPS_HINT, ID_RES, ID_SHADOW, ID_GAME0, ID_GAME1, ID_GAME2, ID_GAME3,
     ID_FULLSCREEN, ID_MOVIES, ID_GOD, ID_RECORD, ID_DUMP, ID_LETTER, ID_PIN, ID_NOREBUILD, ID_SKIPINTRO, ID_VRR, ID_EXTRA,
-    ID_UPDATE, ID_REPORT, ID_CONTROLS, ID_FOLDERS, ID_STATUS, ID_BRSOULS, ID_GPUWARM, ID_LANG,
+    ID_UPDATE, ID_REPORT, ID_CONTROLS, ID_FOLDERS, ID_STATUS, ID_BRSOULS, ID_GPUWARM, ID_LANG, ID_EASY,
     ID_F_SAVES = 200, ID_F_LOGS, ID_F_PERF, ID_F_REPLACE, ID_F_DUMP, ID_F_CAPTURES, ID_F_MODELS, ID_F_ROOT,
 };
 static const UINT WM_GAME_DONE = WM_APP + 1, WM_UPDATE_CHECKED = WM_APP + 2;
@@ -587,6 +594,7 @@ static void read_controls() {
     s.fullscreen = checked(ID_FULLSCREEN);
     s.movies = checked(ID_MOVIES);
     s.god = checked(ID_GOD);
+    s.easy = checked(ID_EASY);
     s.record = checked(ID_RECORD);
     s.dump = checked(ID_DUMP);
     s.by_letter = checked(ID_LETTER);
@@ -619,6 +627,7 @@ static void write_controls() {
     check(ID_FULLSCREEN, s.fullscreen);
     check(ID_MOVIES, s.movies);
     check(ID_GOD, s.god);
+    check(ID_EASY, s.easy);
     check(ID_RECORD, s.record);
     check(ID_DUMP, s.dump);
     check(ID_LETTER, s.by_letter);
@@ -1441,7 +1450,7 @@ static void keys_status(const wstring& t) { SetWindowTextW(GetDlgItem(g_kw, ID_K
 static bool key_down(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
 static void keys_poll() {   // the timer while a slot listens: the first key or mouse button pressed
     if (g_listen < 0 || GetForegroundWindow() != g_kw) return;
-    std::vector<int> vks = {VK_ESCAPE, VK_F1, VK_F8, VK_F9, VK_F11, VK_F12, VK_LWIN, VK_RWIN};
+    std::vector<int> vks = {VK_ESCAPE, VK_F1, VK_F7, VK_F8, VK_F9, VK_F11, VK_F12, VK_LWIN, VK_RWIN};
     for (int c = '0'; c <= '9'; ++c) vks.push_back(c);
     for (int c = 'A'; c <= 'Z'; ++c) vks.push_back(c);
     for (auto& k : KEYDEFS) vks.push_back(k.vk);
@@ -1455,9 +1464,10 @@ static void keys_poll() {   // the timer while a slot listens: the first key or 
     KillTimer(g_kw, 1);
     g_key_set_at = GetTickCount64();
     if (hit == VK_ESCAPE) { keys_status(L"Cancelled."); keys_refresh(); return; }
-    if (hit == VK_F1 || hit == VK_F8 || hit == VK_F9 || hit == VK_F11 || hit == VK_F12 || hit == VK_LWIN || hit == VK_RWIN) {
-        keys_status(L"That key is taken (F1 frees the mouse, F8 marks a stutter, F9 god mode, F11 fullscreen, "
-                    L"F12 a capture). Pick another one.");
+    if (hit == VK_F1 || hit == VK_F7 || hit == VK_F8 || hit == VK_F9 || hit == VK_F11 || hit == VK_F12 || hit == VK_LWIN ||
+        hit == VK_RWIN) {
+        keys_status(L"That key is taken (F1 frees the mouse, F7 Easy mode, F8 marks a stutter, F9 god mode, "
+                    L"F11 fullscreen, F12 a capture). Pick another one.");
         keys_refresh();
         return;
     }
@@ -1567,8 +1577,9 @@ static void on_controls() {
         return c;
     };
     make(L"STATIC", L"Click a slot, then press the key or mouse button for it. Right-click a slot to clear it. "
-         L"Two keys per action; a key goes to one action only. Fixed keys: F1 frees the mouse, F8 marks a stutter, "
-         L"F9 god mode, F11 / Alt+Enter fullscreen. In menus the left / right mouse buttons always confirm / go back. "
+         L"Two keys per action; a key goes to one action only. Fixed keys: F1 frees the mouse, F7 Easy mode, "
+         L"F8 marks a stutter, F9 god mode, F11 / Alt+Enter fullscreen. In menus the left / right mouse buttons "
+         L"always confirm / go back. "
          L"An Xbox controller always works too (DualShock / DualSense: Steam Input or DS4Windows).",
          SS_LEFT, ID_K_HELP, 12, 8, cw - 24, TOP - 14);
     for (int a = 0; a < N_ACTIONS; ++a) {
@@ -1694,6 +1705,10 @@ static void create_controls() {
         L"Records frame timing while you play (about 25 MB an hour, no visible cost). Press F8 right after a "
         L"stutter; \"Report a problem\" packs it up for a GitHub issue.");
     y += 26;
+    add(WC_BUTTONW, L"Easy mode at start (F7)", BS_AUTOCHECKBOX | WS_TABSTOP, ID_EASY, L, y, 200, 22,
+        L"Attacks that hit you take half as much HP. Falls, lava and poison may still do full damage. "
+        L"F7 turns it on and off in the game; with god mode also on, god mode wins.");
+    y += 26;
     add(WC_BUTTONW, L"Dump textures", BS_AUTOCHECKBOX | WS_TABSTOP, ID_DUMP, L, y, 200, 22,
         L"Saves every texture the game draws to textures\\dump, for texture packs. Replacements in "
         L"textures\\replace always load. May stutter a little in new areas.");
@@ -1748,7 +1763,7 @@ static void create_controls() {
     label(L"", L, y, W, 20, ID_STATUS);
 }
 
-static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 30 + 30 + 34 + 26 * 6 + 34 + 36 + 54 + 36 + 20 + 12; }
+static int client_h() { return 12 + banner_h() + 10 + 28 + 40 + 28 + 32 + 30 + 30 + 34 + 26 * 7 + 34 + 36 + 54 + 36 + 20 + 12; }
 
 static LRESULT CALLBACK wndproc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
     switch (m) {

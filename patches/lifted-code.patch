@@ -273,7 +273,7 @@ diff -ruN a/recompiled/ppu_recomp_009.cpp b/recompiled/ppu_recomp_009.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
-@@ -38897,8 +38899,445 @@
+@@ -38897,8 +38899,482 @@
          return;
  }
  
@@ -294,13 +294,31 @@ diff -ruN a/recompiled/ppu_recomp_009.cpp b/recompiled/ppu_recomp_009.cpp
 +#include <unistd.h>
 +static inline void Sleep(unsigned long ms) { usleep((useconds_t)(ms * 1000u)); }   /* macOS / Linux build */
 +#endif
-+/* The window title's suffix: god mode (fix 44) and the stutter recording (fix 46). */
-+static int g_des_title_god, g_des_title_marks = -1;   /* marks -1 = not recording */
++/* The window title's suffix: god mode (fix 44), Easy mode (fix 164) and the stutter recording (fix 46). */
++static int g_des_title_god, g_des_title_easy, g_des_title_marks = -1;   /* marks -1 = not recording */
 +static void des_title(void) {
 +    char s[128]; s[0] = 0;
 +    if (g_des_title_god) strcat(s, "  [GOD MODE - F9]");
++    if (g_des_title_easy) strcat(s, "  [EASY MODE - F7]");
 +    if (g_des_title_marks >= 0) snprintf(s + strlen(s), sizeof s - strlen(s), "  [RECORDING - F8 = stutter, %d marked]", g_des_title_marks);
 +    ps3_host_title_suffix(s);
++}
++/* Easy mode (PORT PATCH, NOTES fix 164). g_des_player_chr: the player's character (guest address; 0 = none:
++ * title, loading, or neither Easy mode nor god mode on), looked up once per game step in func_0001B8D0.
++ * g_des_easy_pct: the share of a hit's HP damage the player takes, 100 = Easy mode off. */
++static uint32_t g_des_player_chr;
++extern "C" int g_des_easy_pct;
++int g_des_easy_pct = 100;
++/* The HP damage a hit (func_00280DC8, ppu_recomp_023.cpp: the int at damage+0x14C) does to chr: unchanged
++ * unless chr is the player and Easy mode is on; then g_des_easy_pct percent of it, rounded half up, at
++ * least 1. Only HP: stamina, the flinch / stagger counters and the hit reactions still see the full damage. */
++extern "C" uint32_t des_easy_damage(uint32_t chr, uint32_t damage)
++{
++    const int pct = g_des_easy_pct;
++    if (pct >= 100 || !chr || chr != g_des_player_chr || (int32_t)damage <= 0) return damage;
++    long long d = ((long long)(int32_t)damage * pct + 50) / 100;
++    if (d < 1) d = 1;
++    return (uint32_t)d;
 +}
 +/* Where the player is (PORT DEBUG, NOTES fix 57): the lookups the event scripts' bindings use.
 + * The character: func_004142A8(obj, 10000) as in god mode; the map (area << 8 | block): the lookup
@@ -485,17 +503,35 @@ diff -ruN a/recompiled/ppu_recomp_009.cpp b/recompiled/ppu_recomp_009.cpp
 +     * and HP (+0x3C4, max +0x3C8) / MP (+0x3CC, max +0x3D0) / stamina (+0x3D4, max +0x3D8)
 +     * are refilled to their maximum. The character comes from the lookup every lua
 +     * binding uses (func_004142A8 on the object at TOC[-0x7884][-0x7F0C]). NOTES fix 44.
-+     * DES_GOD_DUMP=1 (PORT DEBUG): print the player's words chr+0x380..0x47C every 5 s. */
-+    { static int god = -1, clear_flag = 0, dump = -1; static unsigned long long dump_t;
++     * DES_GOD_DUMP=1 (PORT DEBUG): print the player's words chr+0x380..0x47C every 5 s.
++     * Easy mode (PORT PATCH, NOTES fix 164): F7 in the game window toggles it, DES_EASY=1 starts with it on.
++     * While on, hits do DES_EASY_DAMAGE percent (1..99, default 50) of their HP damage to the player
++     * (des_easy_damage above, called by the hit-damage function func_00280DC8). The player's character is
++     * kept in g_des_player_chr for it while Easy mode or god mode is on. With god mode also on, god mode wins
++     * (HP is refilled every step anyway). */
++    { static int god = -1, clear_flag = 0, dump = -1, easy = 0, easy_pct = 50; static unsigned long long dump_t;
 +      if (god < 0) { const char* e = getenv("DES_GOD"); god = (e && *e == '1') ? 1 : 0;
 +                     const char* d = getenv("DES_GOD_DUMP"); dump = d ? 1 : 0;
-+                     if (god) { fprintf(stderr, "[des] god mode ON (DES_GOD)\n"); g_des_title_god = 1; des_title(); } }
++                     if (god) { fprintf(stderr, "[des] god mode ON (DES_GOD)\n"); g_des_title_god = 1; des_title(); }
++                     const char* ez = getenv("DES_EASY"); easy = (ez && *ez == '1') ? 1 : 0;
++                     const char* ep = getenv("DES_EASY_DAMAGE");
++                     if (ep && *ep) { const int p = atoi(ep);
++                         if (p >= 1 && p <= 99) easy_pct = p;
++                         else fprintf(stderr, "[des] DES_EASY_DAMAGE=%s ignored (1..99), using %d\n", ep, easy_pct); }
++                     g_des_easy_pct = easy ? easy_pct : 100;
++                     if (easy) { fprintf(stderr, "[des] easy mode ON (DES_EASY): the player takes %d%% of hit damage\n", easy_pct);
++                                 g_des_title_easy = 1; des_title(); } }
 +      if (ps3_host_hotkey(0x78 /* VK_F9 */)) {
 +          god = !god; if (!god) clear_flag = 1;
 +          fprintf(stderr, "[des] god mode %s (F9)\n", god ? "ON" : "OFF");
 +          g_des_title_god = god; des_title(); }
++      if (ps3_host_hotkey(0x76 /* VK_F7 */)) {
++          easy = !easy; g_des_easy_pct = easy ? easy_pct : 100;
++          fprintf(stderr, "[des] easy mode %s (F7)\n", easy ? "ON" : "OFF");
++          g_des_title_easy = easy; des_title(); }
 +      const int want_dump = dump && ps3_qpc_us() - dump_t >= 5000000ull;
-+      if (god || clear_flag || want_dump) {
++      if (!(god || clear_flag || want_dump || easy)) g_des_player_chr = 0;
++      else {
 +          const uint32_t toc = vm_read32((uint32_t)ctx->gpr[2] - 0x7884);
 +          const uint32_t pp = toc ? vm_read32(toc - 0x7F0C) : 0;
 +          const uint32_t obj = pp ? vm_read32(pp) : 0;
@@ -506,6 +542,7 @@ diff -ruN a/recompiled/ppu_recomp_009.cpp b/recompiled/ppu_recomp_009.cpp
 +              ctx->lr = 0x0001B8D0; func_004142A8(ctx); DRAIN_TRAMPOLINE(ctx);
 +              chr = (uint32_t)ctx->gpr[3];
 +              *ctx = save; }
++          g_des_player_chr = chr;
 +          if (chr) {
 +              const uint64_t fl = vm_read64(chr + 0x310);
 +              if (god) {
@@ -1202,6 +1239,25 @@ diff -ruN a/recompiled/ppu_recomp_023.cpp b/recompiled/ppu_recomp_023.cpp
          /* nop */;
          { int64_t a = (int32_t)ctx->gpr[3]; int64_t b = (int64_t)0; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
          if (((ctx->cr >> 1) & 1)) goto loc_0026C718;
+@@ -29626,6 +29636,10 @@
+         { g_trampoline_fn = (void(*)(void*))func_00280DC8; return; }
+ }
+ 
++/* Easy mode (PORT PATCH, NOTES fix 164), defined in ppu_recomp_011.cpp: the hit below passes its HP damage
++ * through des_easy_damage() while g_des_easy_pct < 100. */
++extern "C" int g_des_easy_pct;
++extern "C" uint32_t des_easy_damage(uint32_t chr, uint32_t damage);
+ void func_00280DC8(ppu_context* ctx) {
+     PPU_MM_SNAP
+         uint64_t _cs_19 = ctx->gpr[19];
+@@ -29683,6 +29697,7 @@
+         ctx->gpr[29] = ctx->gpr[25] | ctx->gpr[25];
+         if ((!((ctx->cr >> 1) & 1))) goto loc_002810C0;
+         ctx->gpr[0] = vm_read32(ctx->gpr[28] + 0x14C);
++        if (g_des_easy_pct < 100) ctx->gpr[0] = des_easy_damage((uint32_t)ctx->gpr[27], (uint32_t)ctx->gpr[0]);   /* Easy mode */
+         ctx->gpr[31] = (uint64_t)0 - ctx->gpr[0];
+         { int64_t a = (int32_t)ctx->gpr[31]; int64_t b = (int64_t)0; uint32_t cr_val = ((a < b) ? 8 : (a > b) ? 4 : 2) | ((ctx->xer >> 31) & 1u); ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
+         if (((ctx->cr >> 3) & 1)) goto loc_002810B0;
 diff -ruN a/recompiled/ppu_recomp_024.cpp b/recompiled/ppu_recomp_024.cpp
 --- a/recompiled/ppu_recomp_024.cpp	2026-10-31 08:09:10.941579000 -0700
 +++ b/recompiled/ppu_recomp_024.cpp	2026-10-31 08:09:16.653709900 -0700

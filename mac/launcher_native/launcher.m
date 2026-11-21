@@ -121,7 +121,7 @@ static NSString* const INPUT_MODES[] = {@"both", @"controller", @"keyboard"};
 
 typedef struct {
     int fps, fps_custom, size, res, game, input, br_souls;
-    BOOL movies, god, skip_intro, log;
+    BOOL movies, god, easy, skip_intro, log;
 } Settings;
 static Settings g_set;
 static NSString* g_name = @"";    // DES_NAME
@@ -237,6 +237,7 @@ static void load_settings(void) {
     s->br_souls = MAX(1, MIN(100, ini_int(@"boss_rush_souls", 2)));   // 2x unless chosen, as the Windows launcher
     s->movies = ini_int(@"movies", 1) != 0;
     s->god = ini_int(@"god_mode", 0) != 0;
+    s->easy = ini_int(@"easy_mode", 0) != 0;
     s->skip_intro = ini_int(@"skip_intro", 0) != 0;
     s->log = ini_int(@"mac_log", 0) != 0;
     s->input = MAX(0, MIN(2, ini_int(@"mac_input", 0)));
@@ -269,6 +270,7 @@ static BOOL save_settings(void) {
     ini_put_int(@"boss_rush_souls", s->br_souls);
     ini_put_int(@"movies", s->movies);
     ini_put_int(@"god_mode", s->god);
+    ini_put_int(@"easy_mode", s->easy);
     ini_put_int(@"skip_intro", s->skip_intro);
     ini_put_int(@"mac_log", s->log);
     ini_put_int(@"mac_input", s->input);
@@ -369,6 +371,7 @@ static NSDictionary<NSString*, NSString*>* game_env(const Settings* s) {
     }
     if (s->movies) [e removeObjectForKey:@"DES_MOVIES"]; else e[@"DES_MOVIES"] = @"0";   // on = when FFmpeg is found
     if (s->god) e[@"DES_GOD"] = @"1"; else [e removeObjectForKey:@"DES_GOD"];
+    if (s->easy) e[@"DES_EASY"] = @"1"; else [e removeObjectForKey:@"DES_EASY"];
     if (s->skip_intro) e[@"DES_SKIP_INTRO"] = @"1"; else [e removeObjectForKey:@"DES_SKIP_INTRO"];
     if (s->log) e[@"DES_LOG"] = @"1"; else [e removeObjectForKey:@"DES_LOG"];
     e[@"PS3_INPUT_MODE"] = INPUT_MODES[s->input];
@@ -530,7 +533,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 @property NSPopUpButton* fps, *size, *res, *input, *brSouls;
 @property NSTextField* fpsHint, *status, *name, *extra, *keysStatus;
 @property NSMutableArray<NSButton*>* games;
-@property NSButton* movies, *god, *skipIntro, *log, *play, *update, *folders;
+@property NSButton* movies, *god, *easy, *skipIntro, *log, *play, *update, *folders;
 @property NSTask* game;
 @property BOOL checking;
 @property NSString* updateNotice;
@@ -636,6 +639,10 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
                       tip:@"The title logo, intro, story and ending movies. Untick to skip them. They need FFmpeg (brew install ffmpeg); without it they are skipped." in:v];
     _god = [self check:@"God mode at start" x:C2 y:y w:200 tip:@"You cannot die and HP, MP and stamina stay full." in:v];
     y += 26;
+    _easy = [self check:@"Easy mode" x:L y:y w:200
+                    tip:@"Attacks that hit you take half as much HP. Falls, lava and poison may still do full damage. "
+                        @"With god mode also on, god mode wins." in:v];
+    y += 26;
     _skipIntro = [self check:@"Skip the intro (straight to PRESS START)" x:L y:y w:320
                          tip:@"Confirms the autosave notice, fast-forwards the logos and skips the opening movie, so the game starts at the "
                              @"title screen in a few seconds. The story movies later on still play." in:v];
@@ -716,6 +723,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     _brSouls.enabled = game == GAME_BOSS_RUSH;
     _movies.state = s->movies;
     _god.state = s->god;
+    _easy.state = s->easy;
     _skipIntro.state = s->skip_intro;
     _log.state = s->log;
     [_input selectItemAtIndex:s->input];
@@ -734,6 +742,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     s->br_souls = BR_SOULS[MAX(0, MIN(BR_SOULS_N - 1, (int)_brSouls.indexOfSelectedItem))];
     s->movies = _movies.state == NSControlStateValueOn;
     s->god = _god.state == NSControlStateValueOn;
+    s->easy = _easy.state == NSControlStateValueOn;
     s->skip_intro = _skipIntro.state == NSControlStateValueOn;
     s->log = _log.state == NSControlStateValueOn;
     s->input = (int)_input.indexOfSelectedItem;

@@ -186,7 +186,7 @@ then press Play.
 ## Play
 
 Start **`DemonsSoulsLauncher.exe`** and press **PLAY**. It holds every option (frame rate, resolution, mods,
-fullscreen, movies, god mode, recording, keys by letter, CPU pinning, GPU power smoothing) and saves them in `launcher.ini`.
+fullscreen, movies, god mode, Easy mode, recording, keys by letter, CPU pinning, GPU power smoothing) and saves them in `launcher.ini`.
 *Extra settings* takes any `NAME=value` switch from this page or from an issue. `--play` starts the game
 straight away, for a shortcut. Without the launcher, set the switches before running `PLAY.bat`.
 
@@ -198,6 +198,7 @@ straight away, for a shortcut. Without the launcher, set the switches before run
 | *Game* | `DES_GAME=game_remaster` / `game_mod`, `DES_BOSS_RUSH=1` | the PC Remaster mod, your imported models (see below), or [boss rush mode](#boss-rush-mode) |
 | *Dump textures* | `LD_TEX_DUMP=1` | saves every texture drawn, for texture packs |
 | *Skip the intro* | `DES_SKIP_INTRO=1` | starts at PRESS START; story movies still play |
+| *Easy mode at start* | `DES_EASY=1` | attacks that hit you take half as much HP (F7 toggles it in the game). `DES_EASY_DAMAGE=1-99` sets the percent (default 50). Falls, lava and poison may still do full damage. With god mode also on, god mode wins |
 | *Keep my build after updates* | `DES_NO_REBUILD=1` | plays your current build instead of rebuilding |
 | *Smooth GPU power* | `LD_GPU_WARM=2` (1-4) | only if your PC switches itself off or restarts while the port runs (but not in other games): keeps the GPU's power draw steady between frames so a power supply does not trip. No change to the picture or frame rate; the card draws more power. If it still happens, `LD_GPU_WARM=3` in Extra settings |
 
@@ -223,6 +224,7 @@ Keyboard + mouse work alongside a controller; whichever you touch last takes ove
 | Enter / Backspace | Start / Select |
 | Esc or F1 | release the mouse (close the game with the X or Alt+F4) |
 | Alt+Enter / F11 | borderless fullscreen |
+| F7 | Easy mode (attacks that hit you take half the HP) |
 | F9 | god mode (no death, HP/MP/stamina stay full) |
 
 - **The cursor** hides over the game after 2 s without moving during play (not in menus); moving the mouse shows it

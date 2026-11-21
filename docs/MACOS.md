@@ -89,7 +89,7 @@ mac/play.sh
 ```
 
 The launcher is the Mac counterpart of the Windows one (`mac/launcher_native/`, plain AppKit): frame rate,
-window size, internal resolution, which copy of the game (Boss rush too), movies, god mode, skip the intro, input, the character name, extra
+window size, internal resolution, which copy of the game (Boss rush too), movies, god mode, Easy mode, skip the intro, input, the character name, extra
 `NAME=value` settings, PLAY, and the same four buttons (check for updates, report a problem, controls,
 folders). It keeps the choices in `launcher.ini` in the port's folder, in the Windows launcher's format, and
 starts `mac/play.sh` with them. Its Controls window changes the keyboard and mouse keys; the game's button
@@ -122,6 +122,7 @@ Settings for `mac/play.sh` on its own, as environment variables:
 | `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
 | `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls (the launcher picks 2x unless you choose) |
 | `DES_GOD=1`, `DES_SKIP_INTRO=1` | god mode from the start; straight to PRESS START |
+| `DES_EASY=1`, `DES_EASY_DAMAGE=<1-99>` | Easy mode: attacks that hit you take half as much HP (or that percent; NOTES fix 164) |
 | `LD_VBLANK_LOCK=0`, `HOST_WINDOW_PACE=0` | frame pacing off: the game's clock free-running, frames shown as they come (before NOTES fix 303) |
 | `SPU_DISPQ_WAIT=0` | the SPU command dispatcher spins while idle instead of sleeping (the old behaviour; about half a core more) |
 | `RSX_ENGINE_FLOAT_DEFER=0` | the exposure read-back waits for the GPU every frame again (before NOTES fix 301), to rule it out |

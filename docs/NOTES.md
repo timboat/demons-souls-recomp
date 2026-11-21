@@ -4177,6 +4177,44 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       slots LB / RB / X. One of four runs stalled at boot (frame 390; the next run of the same build was fine).
       Not checked: a real Xbox pad or DualShock on Windows (the Sony detection has never run on a real PC).
 
+164. **Easy mode: attacks that hit the player take half the HP (F7 / DES_EASY=1; 2026-11-21, US and EU discs):**
+    - Found in the lifted US code (BLUS-30443, the tested EBOOT): HP is chr+0x3C4, max +0x3C8 (fix 44).
+      func_0026FAA8 = SetHp(chr, hp): clamps to 0..max; HP 0 with the dead-mode bit 0x10 of chr+0x310 set
+      (SetDeadMode, god mode) stays 1. func_0026FB20 = AddHp(chr, delta): the same clamp; a negative delta does
+      nothing while bit 0x4 of chr+0x310 is set or the character's vtable+0x1E0 check says so. Its callers are the
+      script / event command interpreter (func_00302008), not combat.
+    - func_00280DC8(chr r3, attacker r4, damage r5, .., r7 byte) applies a hit: HP damage is the int at
+      damage+0x14C (0x00280E64 lwz r0,0x14C(r28); r31 = -damage, HP + r31 clamped 0..max, the 0x10 rule). The
+      same function does the stamina damage (floor -50), adds the damage to the flinch counter chr+0x2F4 and
+      compares it with max HP for the big-hit reaction, each reading +0x14C again. One caller (func_0028B1D8).
+      Fire attacks come through here too.
+    - PORT PATCH (lifted-code.patch): right after that load, des_easy_damage(chr, damage) (ppu_recomp_011.cpp)
+      returns DES_EASY_DAMAGE percent (1..99, default 50; rounded half up, at least 1) when chr is the player and
+      Easy mode is on, else the damage unchanged. Only the HP subtraction sees it: stamina, flinch / stagger and
+      hit reactions still use the full damage, and a hit that kills at half damage still kills (the game decides).
+      The two declarations sit in ppu_recomp_023.cpp above func_00280DC8, so ppu_recomp.h is unchanged and only
+      ppu_recomp_011 / 023 recompile.
+    - The player: func_0001B8D0's god-mode block also keeps g_des_player_chr (the same func_004142A8(obj, 10000)
+      lookup) while Easy mode or god mode is on, else 0. F7 (VK 0x76) toggles Easy mode (ps3_host_hotkey,
+      Windows only like F9: off Windows the hotkeys are stubs), DES_EASY=1 starts with it on, the title shows
+      [EASY MODE - F7]. With god mode also on, god mode wins (HP refilled every step).
+    - Left alone on purpose: fall damage (func_002816D0: int(factor * max HP), already low in this game), and
+      max HP changes such as human -> soul form (func_002802E0, 659 -> 329 after a death), which are not damage.
+      Lava and poison / plague were not looked at.
+    - Launchers: "Easy mode at start (F7)" (Windows; easy_mode in launcher.ini, DES_EASY=1), "Easy mode"
+      (macOS native launcher), "Easy mode: ..." (linux/native/launcher.py); linux/native/play.sh passes it on.
+      Windows Controls window: F7 is a fixed key now (refused like F8 / F9); an action bound to F7 before loses
+      that key when the launcher loads. PLAY.bat, README, MACOS.md, LINUX_NATIVE.md list the switches.
+    - EU (BLES-00932, the tested EBOOT): lifted-code-eu.patch regenerated with tools/port_patch_eu.py (fresh EU
+      lift, US->EU map): 216 hunks, 213 ported + the 3 of fix 72, 0 rejected, 0 warnings. The hit function, SetHp
+      and AddHp are identical code in EU (EU func_00281C70 / 00270950 / 002709C8; same +0x3C4 / +0x14C).
+    - Checked: both patches apply to a fresh lift and as an update over the previous ones (the US one also over
+      a build of the earlier easy-mode branch); against the previous EU patch the EU tree differs only by the Easy
+      mode edits; ppu_recomp_011 / 023 compile for both releases (clang++ -std=c++20, Linux) and link by C name.
+      Played (user, Windows, US disc, with an earlier build of the same hook): enemy hits and fire attacks
+      halved ("17 -> 9", "135 -> 68"; F7 off: the full 135). Not checked: the EU disc in game, Windows / macOS
+      compiles of the launchers.
+
 209. **Native Linux / macOS: Storm King beach missing rocks -- fix 64 again, in the draw engine (2026-11-16, user report
     after a full boss rush on the Steam Deck: "missing level geometry in the storm king fight")**
     - rsx_draw_engine.c (Vulkan and Metal) queued a draw's DRAW_ARRAYS / DRAW_INDEX_ARRAY packets in
