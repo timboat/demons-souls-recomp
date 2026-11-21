@@ -71,6 +71,7 @@ DEFAULTS = {
     'movies': True,
     'async_shaders': True,     # new shaders built in the background: brief pop-in instead of a stutter
     'skip_intro': False,
+    'omniroll': False,         # DES_OMNIROLL: locked-on rolls follow the stick (the OmniRoll mod, NOTES fix 165)
     'god': False,
     'gpu_clock': '800',        # Steam Deck: MHz or auto
     'lto': False,
@@ -164,7 +165,7 @@ def play_env(c, lang_env=None):
     e['DES_FULLSCREEN'] = '1' if c['fullscreen'] else '0'
     e['DES_MOVIES'] = '1' if c['movies'] else '0'
     e['DES_ASYNC_SHADERS'] = '1' if c['async_shaders'] else '0'
-    for k in ('DES_GAME', 'DES_BOSS_RUSH', 'DES_BR_SOULS', 'DES_SKIP_INTRO', 'DES_GOD'):
+    for k in ('DES_GAME', 'DES_BOSS_RUSH', 'DES_BR_SOULS', 'DES_SKIP_INTRO', 'DES_GOD', 'DES_OMNIROLL'):
         e.pop(k, None)
     if c['game'] == 'bossrush':
         e['DES_BOSS_RUSH'] = '1'
@@ -174,6 +175,8 @@ def play_env(c, lang_env=None):
         e['DES_GAME'] = c['game']
     if c['skip_intro']:
         e['DES_SKIP_INTRO'] = '1'
+    if c['omniroll']:
+        e['DES_OMNIROLL'] = '1'
     if c['god']:
         e['DES_GOD'] = '1'
     if DECK:
@@ -404,6 +407,7 @@ def main_window(steam=False):
         'movies': tk.BooleanVar(value=conf['movies']),
         'async_shaders': tk.BooleanVar(value=conf['async_shaders']),
         'skip_intro': tk.BooleanVar(value=conf['skip_intro']),
+        'omniroll': tk.BooleanVar(value=conf['omniroll']),
         'god': tk.BooleanVar(value=conf['god']),
         'gpu_clock': tk.StringVar(value=conf['gpu_clock']),
         'lto': tk.BooleanVar(value=conf['lto']),
@@ -482,6 +486,7 @@ def main_window(steam=False):
                      ('movies', 'Play movies'),
                      ('async_shaders', 'Compile new shaders in the background (brief pop-in instead of a stutter)'),
                      ('skip_intro', 'Skip the intro (straight to PRESS START)'),
+                     ('omniroll', 'Locked-on rolls follow the stick (the OmniRoll mod by hamzafallahi)'),
                      ('god', 'God mode at start')):
         ttk.Checkbutton(opts, text=txt, variable=v[key]).grid(row=row, column=0, columnspan=2, sticky='w')
         row += 1

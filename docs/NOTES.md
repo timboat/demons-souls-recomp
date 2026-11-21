@@ -4177,6 +4177,54 @@ Don't run ps3recomp tools with `-P`/`-I`: they import sibling modules from their
       slots LB / RB / X. One of four runs stalled at boot (frame 390; the next run of the same build was fine).
       Not checked: a real Xbox pad or DualShock on Windows (the Sony detection has never run on a real PC).
 
+165. **OmniRoll: locked-on rolls follow the stick (DES_OMNIROLL=1; the "Omnidirectional Roll" mod, built in; 2026-11-21):**
+    - The mod: "Demon's Souls: Omnidirectional Roll" 1.4.1 by hamzafallahi (Nexus Mods, Demon's Souls mod 192;
+      https://github.com/hamzafallahi/DeS-OmniRoll; MIT, notice in docs/third_party/DeS-OmniRoll-LICENSE.txt).
+      Locked on, rolls go where the stick points instead of one of 4 directions (back half: the back roll aimed
+      along the stick); unlocked, diagonal rolls no longer go to the mirrored diagonal (a vanilla bug, mostly on
+      keyboard). It is an RPCS3 code patch: branches from the roll code into a code cave (184 words in a function
+      nothing calls, US 0x21F678 / EU 0x220500) plus a telemetry block. A recompiled game runs host code, so
+      patching guest memory does nothing, and patching the EBOOT before the lift would need the lifter to take
+      jumps into the middle of a dead function, change the EBOOT hashes SETUP checks and need a relift to turn it
+      off. So its code is rebuilt in C, as a PORT PATCH, switchable at run time.
+    - The game side (US; EU from the address map, every one equal to the mod's own EU address): the roll decision
+      func_0030E750 (EU 0x30F528; r14 = PadManipulator, r15 = character controller, r30 = its constant pool, the
+      pad device at sp+0x78) raises one of the PadManipulator's direction flags +0x93..+0x96 at 0x30EC00 (0x95),
+      loc_0030F2C4 (0x96), loc_0030F2FC (0x93), loc_0030F394 (0x94), each li r0,1 / stb +0x158 / stb +flag / b
+      loc_0030EA80. The PadManipulator update func_003103F8 (EU 0x3111D0) calls it at 0x310A60 with f1 = dt,
+      r5 = ctrl. The raw stick: func_001C3000(out, pad, 0x11, 0x10) (EU 0x1C3E88), the same call the game's own
+      x / y wrappers func_001B6960 / 001B6998 make; atan2f func_0094F928 (EU 0x9513A0). The port's earlier edits
+      touch none of these functions.
+    - PORT PATCH (lifted-code.patch, ppu_recomp_026.cpp only): des_omniroll(ctx, flag) at the four flag stores
+      returns the flag to raise; des_omniroll_hold(dt, ctrl) after the call in func_003103F8. They are the mod's
+      v1.4 code step by step: locked on (ctrl+0x139 == 0) and the stick outside the game's roll deadzone
+      (*(*(r30 - 0x7E50))): a = atan2f(x, y), ref = atan2f(px - tx, pz - tz) (PlayerIns+0x110 / +0x118; the
+      current yaw if the target is within 0.01), |a| > pi/2 -> back roll with a -/+ pi, yaw = ref + a wrapped
+      to +-pi, written to [ctrl+0x10]+4 and held for 0.3 s of the game's frame time; unlocked with
+      |PadManipulator+0x60 (x, z)|^2 > 0.25: yaw = atan2f(-x, -z), forward roll, the same hold; else the
+      game's flag. The stick read and atan2f calls run on the saved context and an own 0x80-byte guest frame,
+      as in the mod, and every register is restored. The telemetry block is left out (DES_OMNIROLL_LOG=1 prints
+      each changed roll instead). Off unless DES_OMNIROLL=1.
+    - Checked against the mod itself: a test runs the mod's own US listing (patches/DeS_OmniRoll_US_BLUS30443.yml,
+      interpreted from its disassembly comments, float32 rounding per op) and the helper as compiled into
+      ppu_recomp_026.cpp on the same mock memory, stick and atan2f: 3078 scenarios (random, plus axes, diagonals,
+      +-90 / 180 deg, the deadzone and 0.25 borders, a target on the player, wraps past +-pi, 30 / 50 / 60 fps
+      dt), the raised flag, the yaw bits and the hold over 22-24 frames: all equal; 2701 of them redirected;
+      registers unchanged in all. Mutations of the helper (wrong back-roll sign, half-speed hold, swapped
+      atan2f arguments, a 0.24 move threshold) are caught. The mod's US and EU listings are identical apart
+      from the addresses.
+    - lifted-code-eu.patch regenerated with tools/port_patch_eu.py: 220 hunks, 217 ported + the 3 of fix 72,
+      0 rejected, 0 warnings; the hooks land in EU func_0030F528 / func_003111D0 and call func_001C3E88 /
+      func_009513A0, the mod's EU addresses. Both patches apply fresh and as an update; against upstream the
+      EU tree differs only in ppu_recomp_026.cpp; that unit compiles for both releases (clang++ -std=c++20
+      -Wall). ppu_recomp.h is unchanged: only ppu_recomp_026 recompiles.
+    - Launchers: "Locked-on rolls follow the stick (OmniRoll mod)" (Windows and macOS native; omniroll in launcher.ini,
+      DES_OMNIROLL=1), linux/native/launcher.py the same; linux/native/play.sh passes it on. README (Mods,
+      credits), PLAY.bat, MACOS.md, LINUX_NATIVE.md list it.
+    - Not checked: a build and a run in the game (the sandbox has no game data), the 60 fps modes in game (the
+      hold counts the game's own frame time, which the roll animation uses too), keyboard and mouse vs pad,
+      Windows / macOS compiles of the launchers. The mod's author tested EU in RPCS3; its US file is marked new.
+
 209. **Native Linux / macOS: Storm King beach missing rocks -- fix 64 again, in the draw engine (2026-11-16, user report
     after a full boss rush on the Steam Deck: "missing level geometry in the storm king fight")**
     - rsx_draw_engine.c (Vulkan and Metal) queued a draw's DRAW_ARRAYS / DRAW_INDEX_ARRAY packets in

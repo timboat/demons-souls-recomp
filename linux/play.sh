@@ -15,7 +15,7 @@
 #                            Microsoft by winetricks) into that prefix, for when Wine's own one fails on
 #                            the game's shaders (black or missing geometry, "D3DCompile" errors in the log)
 # Environment: DES_FPS=30|50|60|unlimited|31-240 (a Steam Deck defaults to 30), DES_MOVIES=0, DES_NAME,
-#              DES_GAME, DES_BOSS_RUSH=1, DES_RECORD=0, DES_GOD=1 -- all as in PLAY.bat.
+#              DES_GAME, DES_BOSS_RUSH=1, DES_RECORD=0, DES_GOD=1, DES_OMNIROLL=1 -- all as in PLAY.bat.
 #              DES_FULLSCREEN=0|1 (a Steam Deck defaults to 1: borderless full screen).
 set -u
 D=$(cd "$(dirname "$0")/.." && pwd)

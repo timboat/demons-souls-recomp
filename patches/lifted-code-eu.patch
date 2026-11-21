@@ -1,4 +1,4 @@
-# lifted-code-eu.patch: made by tools/port_patch_eu.py from lifted-code.patch sha256 40938e3fd13e2df1921a95343442b4c3dfe473c989e3edc2027c488ad5124022
+# lifted-code-eu.patch: made by tools/port_patch_eu.py from lifted-code.patch sha256 36f3a5ff674397105353b3f104ebd8e244fa830be04cc4fcee4948480bad4310
 diff -ruN a/recompiled/ppu_recomp.h b/recompiled/ppu_recomp.h
 --- a/recompiled/ppu_recomp.h
 +++ b/recompiled/ppu_recomp.h
@@ -1324,6 +1324,159 @@ diff -ruN a/recompiled/ppu_recomp_026.cpp b/recompiled/ppu_recomp_026.cpp
  } while(0)
  
  /* Each lifted function opens with PPU_MM_SNAP; its loads and stores use that
+@@ -11155,6 +11157,106 @@
+         { g_trampoline_fn = (void(*)(void*))func_0030F2F8; return; }
+ }
+ 
++/* OmniRoll (PORT PATCH, NOTES fix 165): "Demon's Souls: Omnidirectional Roll" 1.4.1 by hamzafallahi (Nexus
++ * Mods, Demon's Souls mod 192; https://github.com/hamzafallahi/DeS-OmniRoll; MIT, notice in
++ * docs/third_party/DeS-OmniRoll-LICENSE.txt). The mod is an RPCS3 code patch (a code cave the game branches
++ * to), which a recompiled game cannot take; this is its v1.4 code (patches/DeS_OmniRoll_US_BLUS30443.yml)
++ * rebuilt in C, same steps, same constants, the game's own stick reader and atan2f. DES_OMNIROLL=1 turns it
++ * on; DES_OMNIROLL_LOG=1 prints each roll it changes.
++ *   - des_omniroll(): at the four places the roll decision func_0030F528 raises a roll-direction flag of the
++ *     PadManipulator (r14; ctrl = the character controller, r15): locked on (ctrl+0x139 == 0) with the raw left
++ *     stick outside the game's roll deadzone, the character turns to the stick direction measured from the
++ *     direction to the lock-on target and plays the forward roll (front half) or the back roll aimed along the
++ *     stick (back half); unlocked with movement (|PadManipulator+0x60| > 0.5), it faces the real move direction
++ *     and plays the forward roll (the vanilla mirrored-diagonal fix). Otherwise the game's own flag.
++ *   - des_omniroll_hold(): after every roll decision (the call in func_003111D0), the new facing is held for
++ *     0.3 s of the game's frame time, so lock-on cannot pull it back at the start of the roll. */
++static int g_des_omniroll = -1, g_des_omniroll_log;
++static float g_des_omniroll_hold_left, g_des_omniroll_hold_yaw;
++static int des_omniroll_on(void)
++{
++    if (g_des_omniroll < 0) {
++        const char* e = getenv("DES_OMNIROLL"); g_des_omniroll = (e && *e == '1') ? 1 : 0;
++        const char* l = getenv("DES_OMNIROLL_LOG"); g_des_omniroll_log = (l && *l == '1') ? 1 : 0;
++        if (g_des_omniroll) fprintf(stderr, "[des] omniroll ON (DES_OMNIROLL): locked-on rolls follow the stick\n");
++    }
++    return g_des_omniroll;
++}
++static float des_omniroll_rdf(const ppu_mm* m, uint32_t a) { const uint32_t u = vm_read32_mm(m, a); float f; memcpy(&f, &u, 4); return f; }
++static void des_omniroll_wrf(const ppu_mm* m, uint32_t a, float f) { uint32_t u; memcpy(&u, &f, 4); vm_write32_mm(m, a, u); }
++/* The game's atan2f (func_009513A0, f1 = a, f2 = b -> f1), as the mod calls it. ctx is saved by the caller. */
++static float des_omniroll_atan2(ppu_context* ctx, float a, float b)
++{
++    ctx->fpr[1] = a; ctx->fpr[2] = b;
++    ctx->lr = 0x0030F528; func_009513A0(ctx); DRAIN_TRAMPOLINE(ctx);
++    return (float)ctx->fpr[1];
++}
++/* flag: the direction flag the game raises here (0x93 forward, 0x94 back, 0x95 left, 0x96 right). Returns the one
++ * to raise instead (the PadManipulator byte at that offset). Every register is as it was on return. */
++static uint32_t des_omniroll(ppu_context* ctx, uint32_t flag)
++{
++    if (!des_omniroll_on()) return flag;
++    PPU_MM_SNAP
++    const float pi = 3.14159265f, two_pi = 6.28318531f, half_pi = 1.57079633f, hold_s = 0.3f;
++    const uint32_t pm = (uint32_t)ctx->gpr[14], ctrl = (uint32_t)ctx->gpr[15];
++    const ppu_context save = *ctx;
++    uint32_t raise = flag;
++    if (vm_read8(ctrl + 0x139) == 0) {                     /* locked on */
++        /* the raw left stick: func_001C3E88(out, pad device, 0x11, 0x10) on an own 0x80-byte frame, as the
++         * mod does (the roll decision keeps the pad device at its sp+0x78) */
++        const uint32_t sp = (uint32_t)ctx->gpr[1], fr = sp - 0x80;
++        vm_write64(fr, sp);
++        ctx->gpr[1] = fr; ctx->gpr[3] = fr + 0x60; ctx->gpr[4] = vm_read32(sp + 0x78);
++        ctx->gpr[5] = 0x11; ctx->gpr[6] = 0x10;
++        ctx->lr = 0x0030F528; func_001C3E88(ctx); DRAIN_TRAMPOLINE(ctx);
++        const float x = des_omniroll_rdf(&_mm, fr + 0x60), y = des_omniroll_rdf(&_mm, fr + 0x64);
++        const float dz = des_omniroll_rdf(&_mm, vm_read32((uint32_t)save.gpr[30] - 0x7E50));   /* the game's roll deadzone */
++        if (x * x + y * y > dz * dz) {
++            const float a0 = des_omniroll_atan2(ctx, x, y);   /* stick angle: 0 = up, + = right */
++            uint32_t xf = vm_read32(ctrl + 0x10);              /* transform: rotation (x, yaw, z, w), position at +0x10 */
++            float ref = des_omniroll_rdf(&_mm, xf + 4);         /* no usable target: the current yaw */
++            const uint32_t pl = vm_read32(ctrl + 0x4);          /* PlayerIns: lock-on target point at +0x110 */
++            const float dx = des_omniroll_rdf(&_mm, xf + 0x10) - des_omniroll_rdf(&_mm, pl + 0x110);
++            const float dzz = des_omniroll_rdf(&_mm, xf + 0x18) - des_omniroll_rdf(&_mm, pl + 0x118);
++            if (dx * dx + dzz * dzz > 0.0001f) ref = des_omniroll_atan2(ctx, dx, dzz);   /* yaw facing the target */
++            float a = a0;
++            raise = 0x93;                                      /* front half: forward roll */
++            if (!(fabsf(a) <= half_pi)) {                      /* back half: back roll, aimed along the stick */
++                raise = 0x94;
++                if (!(a <= 0.0f)) a -= pi; else a += pi;
++            }
++            float yaw = ref + a;
++            if (!(yaw <= pi)) yaw -= two_pi;
++            if (!(yaw >= -pi)) yaw += two_pi;
++            xf = vm_read32(ctrl + 0x10);
++            des_omniroll_wrf(&_mm, xf + 4, yaw);
++            g_des_omniroll_hold_yaw = yaw; g_des_omniroll_hold_left = hold_s;
++            if (g_des_omniroll_log)
++                fprintf(stderr, "[des] omniroll: locked roll, stick %.0f deg, flag 0x%02X -> 0x%02X, yaw %.2f\n",
++                        a0 * 57.29578f, flag, raise, yaw);
++        }
++    } else {                                               /* unlocked */
++        const float mx = des_omniroll_rdf(&_mm, pm + 0x60), mz = des_omniroll_rdf(&_mm, pm + 0x68);   /* move vector */
++        if (mx * mx + mz * mz > 0.25f) {
++            const float yaw = des_omniroll_atan2(ctx, -mx, -mz);   /* yaw facing the move direction */
++            des_omniroll_wrf(&_mm, vm_read32(ctrl + 0x10) + 4, yaw);
++            g_des_omniroll_hold_yaw = yaw; g_des_omniroll_hold_left = hold_s;
++            raise = 0x93;
++            if (g_des_omniroll_log && flag != 0x93)
++                fprintf(stderr, "[des] omniroll: unlocked roll, flag 0x%02X -> 0x93, yaw %.2f\n", flag, yaw);
++        }
++    }
++    *ctx = save;
++    return raise;
++}
++/* After each roll decision: hold the roll's facing (dt = the frame time the decision got, ctrl = its r5). */
++static void des_omniroll_hold(double dt, uint32_t ctrl)
++{
++    if (!(g_des_omniroll_hold_left > 0.0f)) return;
++    PPU_MM_SNAP
++    g_des_omniroll_hold_left -= (float)dt;
++    des_omniroll_wrf(&_mm, vm_read32(ctrl + 0x10) + 4, g_des_omniroll_hold_yaw);
++}
+ void func_0030F528(ppu_context* ctx) {
+     PPU_MM_SNAP
+         uint64_t _cs_14 = ctx->gpr[14];
+@@ -11499,7 +11601,7 @@
+         if ((!((ctx->cr >> 3) & 1))) goto loc_003100E4;
+         ctx->gpr[0] = (int64_t)(int32_t)(1);
+         vm_write8(ctx->gpr[14] + 0x158, ctx->gpr[0]);
+-        vm_write8(ctx->gpr[14] + 0x95, ctx->gpr[0]);
++        vm_write8(ctx->gpr[14] + des_omniroll(ctx, 0x95), ctx->gpr[0]);   /* OmniRoll (PORT PATCH, NOTES fix 165) */
+         goto loc_0030F858;
+ loc_0030F9E8:
+         { uint32_t tmp = vm_read32(ctx->gpr[30] + -0x7F88); float ftmp; memcpy(&ftmp, &tmp, 4); ctx->fpr[26] = ftmp; }
+@@ -11937,7 +12039,7 @@
+ loc_0031009C:
+         ctx->gpr[0] = (int64_t)(int32_t)(1);
+         vm_write8(ctx->gpr[14] + 0x158, ctx->gpr[0]);
+-        vm_write8(ctx->gpr[14] + 0x96, ctx->gpr[0]);
++        vm_write8(ctx->gpr[14] + des_omniroll(ctx, 0x96), ctx->gpr[0]);   /* OmniRoll (PORT PATCH, NOTES fix 165) */
+         goto loc_0030F858;
+ loc_003100AC:
+         ctx->gpr[3] = ctx->gpr[1] + (int64_t)(0x74);
+@@ -11953,7 +12055,7 @@
+ loc_003100D4:
+         ctx->gpr[0] = (int64_t)(int32_t)(1);
+         vm_write8(ctx->gpr[14] + 0x158, ctx->gpr[0]);
+-        vm_write8(ctx->gpr[14] + 0x93, ctx->gpr[0]);
++        vm_write8(ctx->gpr[14] + des_omniroll(ctx, 0x93), ctx->gpr[0]);   /* OmniRoll (PORT PATCH, NOTES fix 165) */
+         goto loc_0030F858;
+ loc_003100E4:
+         { double a = ctx->fpr[30]; double b = ctx->fpr[0]; uint32_t cr_val = (a != a || b != b) ? 1 : (a < b) ? 8 : (a > b) ? 4 : 2; ctx->cr = (ctx->cr & ~(0xFu << 0)) | (cr_val << 0); }
+@@ -11995,7 +12097,7 @@
+ loc_0031016C:
+         ctx->gpr[0] = (int64_t)(int32_t)(1);
+         vm_write8(ctx->gpr[14] + 0x158, ctx->gpr[0]);
+-        vm_write8(ctx->gpr[14] + 0x94, ctx->gpr[0]);
++        vm_write8(ctx->gpr[14] + des_omniroll(ctx, 0x94), ctx->gpr[0]);   /* OmniRoll (PORT PATCH, NOTES fix 165) */
+         goto loc_0030F858;
+ loc_0031017C:
+         ctx->lr = 0x00310180; func_00272910(ctx); DRAIN_TRAMPOLINE(ctx);
+@@ -13590,7 +13692,9 @@
+         ctx->fpr[1] = ctx->fpr[30];
+         ctx->gpr[3] = ctx->gpr[15] | ctx->gpr[15];
+         ctx->gpr[5] = vm_read64(ctx->gpr[1] + 0x488);
++        { const double _or_dt = ctx->fpr[1]; const uint32_t _or_ctrl = (uint32_t)ctx->gpr[5];   /* OmniRoll (PORT PATCH) */
+         ctx->lr = 0x0031183C; func_0030F528(ctx); DRAIN_TRAMPOLINE(ctx);
++        des_omniroll_hold(_or_dt, _or_ctrl); }
+         vm_write8(ctx->gpr[31] + 0x8B, ctx->gpr[17]);
+         ctx->gpr[11] = vm_read8(ctx->gpr[1] + 0x450);
+         ctx->gpr[9] = vm_read32(ctx->gpr[1] + 0x3A4);
 diff -ruN a/recompiled/ppu_recomp_027.cpp b/recompiled/ppu_recomp_027.cpp
 --- a/recompiled/ppu_recomp_027.cpp
 +++ b/recompiled/ppu_recomp_027.cpp

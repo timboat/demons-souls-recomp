@@ -121,7 +121,7 @@ static NSString* const INPUT_MODES[] = {@"both", @"controller", @"keyboard"};
 
 typedef struct {
     int fps, fps_custom, size, res, game, input, br_souls;
-    BOOL movies, god, skip_intro, log;
+    BOOL movies, god, skip_intro, omniroll, log;
 } Settings;
 static Settings g_set;
 static NSString* g_name = @"";    // DES_NAME
@@ -238,6 +238,7 @@ static void load_settings(void) {
     s->movies = ini_int(@"movies", 1) != 0;
     s->god = ini_int(@"god_mode", 0) != 0;
     s->skip_intro = ini_int(@"skip_intro", 0) != 0;
+    s->omniroll = ini_int(@"omniroll", 0) != 0;
     s->log = ini_int(@"mac_log", 0) != 0;
     s->input = MAX(0, MIN(2, ini_int(@"mac_input", 0)));
     {   // res_q (quarters); older launchers wrote only res_scale (1-4)
@@ -270,6 +271,7 @@ static BOOL save_settings(void) {
     ini_put_int(@"movies", s->movies);
     ini_put_int(@"god_mode", s->god);
     ini_put_int(@"skip_intro", s->skip_intro);
+    ini_put_int(@"omniroll", s->omniroll);
     ini_put_int(@"mac_log", s->log);
     ini_put_int(@"mac_input", s->input);
     ini_put(@"mac_window", SIZES[s->size]);
@@ -370,6 +372,7 @@ static NSDictionary<NSString*, NSString*>* game_env(const Settings* s) {
     if (s->movies) [e removeObjectForKey:@"DES_MOVIES"]; else e[@"DES_MOVIES"] = @"0";   // on = when FFmpeg is found
     if (s->god) e[@"DES_GOD"] = @"1"; else [e removeObjectForKey:@"DES_GOD"];
     if (s->skip_intro) e[@"DES_SKIP_INTRO"] = @"1"; else [e removeObjectForKey:@"DES_SKIP_INTRO"];
+    if (s->omniroll) e[@"DES_OMNIROLL"] = @"1"; else [e removeObjectForKey:@"DES_OMNIROLL"];
     if (s->log) e[@"DES_LOG"] = @"1"; else [e removeObjectForKey:@"DES_LOG"];
     e[@"PS3_INPUT_MODE"] = INPUT_MODES[s->input];
     NSString* name = [g_name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
@@ -530,7 +533,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
 @property NSPopUpButton* fps, *size, *res, *input, *brSouls;
 @property NSTextField* fpsHint, *status, *name, *extra, *keysStatus;
 @property NSMutableArray<NSButton*>* games;
-@property NSButton* movies, *god, *skipIntro, *log, *play, *update, *folders;
+@property NSButton* movies, *god, *skipIntro, *omniroll, *log, *play, *update, *folders;
 @property NSTask* game;
 @property BOOL checking;
 @property NSString* updateNotice;
@@ -640,6 +643,11 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
                          tip:@"Confirms the autosave notice, fast-forwards the logos and skips the opening movie, so the game starts at the "
                              @"title screen in a few seconds. The story movies later on still play." in:v];
     y += 26;
+    _omniroll = [self check:@"Locked-on rolls follow the stick (OmniRoll mod)" x:L y:y w:360
+                        tip:@"Locked on, you roll exactly where the stick points instead of in one of 4 directions; unlocked diagonal rolls "
+                            @"no longer go the mirrored way. \"Omnidirectional Roll\" by hamzafallahi (Nexus Mods, Demon's Souls mod 192), "
+                            @"built into the port." in:v];
+    y += 26;
     _log = [self check:@"Detailed log (slower)" x:L y:y w:320
                    tip:@"Writes the runtime's per-event lines to logs/last_run_err.txt (DES_LOG=1). Only when asked in an issue: it costs frames and grows fast." in:v];
     y += 34;
@@ -717,6 +725,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     _movies.state = s->movies;
     _god.state = s->god;
     _skipIntro.state = s->skip_intro;
+    _omniroll.state = s->omniroll;
     _log.state = s->log;
     [_input selectItemAtIndex:s->input];
     _name.stringValue = g_name;
@@ -735,6 +744,7 @@ enum { K_SLOT = 1000 };   // a Controls slot button's tag: K_SLOT + action * 2 +
     s->movies = _movies.state == NSControlStateValueOn;
     s->god = _god.state == NSControlStateValueOn;
     s->skip_intro = _skipIntro.state == NSControlStateValueOn;
+    s->omniroll = _omniroll.state == NSControlStateValueOn;
     s->log = _log.state == NSControlStateValueOn;
     s->input = (int)_input.indexOfSelectedItem;
     g_name = [_name.stringValue copy];

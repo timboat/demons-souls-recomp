@@ -147,7 +147,8 @@ so it closes for a moment and opens again. The first change keeps a copy of the 
 
 `linux/native/play.sh` settings (environment): `DES_FPS=60|30|unlimited` (default 60),
 `DES_FULLSCREEN=0|1` (default 1 on a Deck), `DES_MOVIES=0|1`, `DES_NAME`, `DES_GAME=game_remaster`,
-`DES_BOSS_RUSH=1` and `DES_BR_SOULS`, `DES_SKIP_INTRO=1`, `DES_GOD=1`, `DES_LOG=1`,
+`DES_BOSS_RUSH=1` and `DES_BR_SOULS`, `DES_SKIP_INTRO=1`, `DES_GOD=1`, `DES_OMNIROLL=1` (locked-on rolls follow the stick:
+the OmniRoll mod, built in), `DES_LOG=1`,
 `DES_ASYNC_SHADERS=0|1` (default 1: a shader never seen before is translated in the background and its object
 shows a frame or so late instead of the game stalling; the launcher's "Compile new shaders in the background"), and on a Steam Deck
 `DES_GPU_CLOCK=<MHz>|auto` (default 800; restored to automatic when the game exits). The saves are in

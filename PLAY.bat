@@ -14,6 +14,8 @@ rem character name: type it, Enter = OK, Esc = Cancel (the game ignores keys whi
 rem "set DES_NAME=<name>" before launching skips the box and uses that name.
 rem God mode (fix 44): F9 in the game window turns it on / off (the window title says [GOD MODE - F9]):
 rem you cannot die and HP, MP and stamina stay full. "set DES_GOD=1" before launching starts with it on.
+rem OmniRoll (fix 165): "set DES_OMNIROLL=1" makes locked-on rolls follow the stick at any angle ("Omnidirectional Roll" by
+rem hamzafallahi, Nexus Mods mod 192, built into the port).
 rem
 rem Every run is logged to logs\last_run_out.txt / last_run_err.txt (previous run kept as *_prev.txt).
 rem They grow by roughly 600 MB an hour. Attach the end of last_run_err.txt when you report a crash.

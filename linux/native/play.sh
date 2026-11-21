@@ -21,6 +21,7 @@
 #   DES_GAME=game_remaster   run the PC Remaster mod's copy instead of game/
 #   DES_BOSS_RUSH=1      boss rush mode (as in PLAY.bat); DES_BR_SOULS=2|3|5|10 multiplies the souls
 #   DES_GOD=1            no damage (testing)
+#   DES_OMNIROLL=1       locked-on rolls follow the stick (the OmniRoll mod, built in; docs/NOTES.md fix 165)
 #   DES_LOG=1            the runtime's per-event log lines (PS3_VERBOSE=1); off by default, they cost frames
 #   DES_GPU_CLOCK=<MHz>|auto   Steam Deck only: pin the GPU clock for the session (default 800; see
 #                        linux/play.sh, the same helper and the same reason)
@@ -85,6 +86,7 @@ if [ -n "$DECK" ]; then
   export SPU_IDLE_PAUSE="${SPU_IDLE_PAUSE:-128}" SPU_IDLE_SLEEP_US="${SPU_IDLE_SLEEP_US:-50}"
 fi
 [ "${DES_GOD:-}" = 1 ] && export DES_GOD=1
+[ "${DES_OMNIROLL:-}" = 1 ] && export DES_OMNIROLL=1
 if [ "${DES_FULLSCREEN:-${DECK:-0}}" = 1 ]; then export PS3RECOMP_VK_FULLSCREEN=1; else unset PS3RECOMP_VK_FULLSCREEN; fi
 if [ "${DES_MOVIES:-1}" = 1 ]; then unset PS3_NO_SAIL; else export PS3_NO_SAIL=1; fi
 if [ "${DES_ASYNC_SHADERS:-1}" = 1 ]; then export RSX_VK_ASYNC_SHADERS=1; else export RSX_VK_ASYNC_SHADERS=0; fi

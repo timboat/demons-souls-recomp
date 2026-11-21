@@ -122,6 +122,7 @@ Settings for `mac/play.sh` on its own, as environment variables:
 | `DES_GAME=game_remaster` | the PC Remaster mod's copy instead of `game/` |
 | `DES_BOSS_RUSH=1` | boss rush mode: its own copy of the game (`game_bossrush`, hard links) and its own saves (`bossrush/`); `DES_BR_SOULS=2`, `3`, `5` or `10` multiplies the souls (the launcher picks 2x unless you choose) |
 | `DES_GOD=1`, `DES_SKIP_INTRO=1` | god mode from the start; straight to PRESS START |
+| `DES_OMNIROLL=1` | locked-on rolls follow the stick (the OmniRoll mod, built in; NOTES fix 165) |
 | `LD_VBLANK_LOCK=0`, `HOST_WINDOW_PACE=0` | frame pacing off: the game's clock free-running, frames shown as they come (before NOTES fix 303) |
 | `SPU_DISPQ_WAIT=0` | the SPU command dispatcher spins while idle instead of sleeping (the old behaviour; about half a core more) |
 | `RSX_ENGINE_FLOAT_DEFER=0` | the exposure read-back waits for the GPU every frame again (before NOTES fix 301), to rule it out |

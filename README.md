@@ -186,7 +186,7 @@ then press Play.
 ## Play
 
 Start **`DemonsSoulsLauncher.exe`** and press **PLAY**. It holds every option (frame rate, resolution, mods,
-fullscreen, movies, god mode, recording, keys by letter, CPU pinning, GPU power smoothing) and saves them in `launcher.ini`.
+fullscreen, movies, god mode, OmniRoll, recording, keys by letter, CPU pinning, GPU power smoothing) and saves them in `launcher.ini`.
 *Extra settings* takes any `NAME=value` switch from this page or from an issue. `--play` starts the game
 straight away, for a shortcut. Without the launcher, set the switches before running `PLAY.bat`.
 
@@ -198,6 +198,7 @@ straight away, for a shortcut. Without the launcher, set the switches before run
 | *Game* | `DES_GAME=game_remaster` / `game_mod`, `DES_BOSS_RUSH=1` | the PC Remaster mod, your imported models (see below), or [boss rush mode](#boss-rush-mode) |
 | *Dump textures* | `LD_TEX_DUMP=1` | saves every texture drawn, for texture packs |
 | *Skip the intro* | `DES_SKIP_INTRO=1` | starts at PRESS START; story movies still play |
+| *Locked-on rolls follow the stick* | `DES_OMNIROLL=1` | locked on, you roll where the stick points instead of in 4 directions: the OmniRoll mod, built in (see [Mods](#mods-optional)) |
 | *Keep my build after updates* | `DES_NO_REBUILD=1` | plays your current build instead of rebuilding |
 | *Smooth GPU power* | `LD_GPU_WARM=2` (1-4) | only if your PC switches itself off or restarts while the port runs (but not in other games): keeps the GPU's power draw steady between frames so a power supply does not trip. No change to the picture or frame rate; the card draws more power. If it still happens, `LD_GPU_WARM=3` in Extra settings |
 
@@ -285,6 +286,13 @@ below. It makes `game_remaster/` from hard links, so it uses no extra space and 
 .venv\Scripts\python tools\install_remaster.py "path\to\the mod.zip" --apply
 ```
 
+**OmniRoll** ("Omnidirectional Roll" by hamzafallahi, Nexus Mods, Demon's Souls mod 192) is built into the port, for
+both discs: tick *Locked-on rolls follow the stick* in the launcher (or `DES_OMNIROLL=1`). Locked on, you roll exactly where
+the stick points instead of in one of 4 directions (the back half of the stick plays the back roll, aimed along the
+stick); unlocked diagonal rolls no longer go to the mirrored diagonal. The backstep, rolls out of a sprint,
+stamina, i-frames and roll speed are the game's own. Nothing to download: the mod is an RPCS3 code patch, which a
+recompiled game cannot load, so its code is rebuilt in the port (`DES_OMNIROLL_LOG=1` prints each roll it changes).
+
 **Texture packs:**
 1. Tick *Dump textures* and play; textures land in `textures\dump\` as `<KEY>_<w>x<h>_<format>.png`.
 2. Put an edited or larger file whose name starts with the same KEY in `textures\replace\`. `.dds` (DXT, BC7,
@@ -357,6 +365,8 @@ Everything SETUP produces (`game/`, `port/`, `deps/`, `.venv/`, saves, logs) is 
   it is the reference for PS3 behaviour.
 - erikomis: the macOS build and launcher.
 - The *PC Remaster* mod is by fromsoftserve.
+- *Omnidirectional Roll* is by hamzafallahi ([DeS-OmniRoll](https://github.com/hamzafallahi/DeS-OmniRoll), MIT,
+  [notice](docs/third_party/DeS-OmniRoll-LICENSE.txt)); the port carries its code rebuilt in C.
 
 This repo's code and patches are MIT-licensed ([LICENSE](LICENSE)). Demon's Souls is © Sony Interactive
 Entertainment / FromSoftware. This project is not affiliated with or endorsed by them and contains none of
