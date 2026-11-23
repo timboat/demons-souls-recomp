@@ -297,6 +297,7 @@ function InGameStart(proxy, param)
 				print("[coop] home after a boss: body form");
 			elseif COOP_Get("orig") == 0 then
 				COOP_Set("orig", proxy:GetLocalPlayerChrType() + 1);
+				COOP_Joinable(proxy);                 -- the first join too: the summon only takes a soul
 			elseif proxy:GetLocalPlayerChrType() ~= COOP_Get("orig") - 1 then
 				print("[coop] home: back to the form from before the join (type " .. (COOP_Get("orig") - 1) .. ")");
 				proxy:SetChrType(10000, COOP_Get("orig") - 1);

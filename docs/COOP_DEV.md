@@ -202,6 +202,38 @@ wins. Run it with `COOP_GAME=game_coop` in front of the test runner.
 - Not looked at yet: the session lock BlockClear2 sets (LockSession: it may refuse a new join after a boss),
   black phantoms, a guest in body form joining for the first time.
 
+## The Windows build, under Proton (2026-11-23, RTX 3070 PC, Linux)
+
+The 4090 PC cannot run two copies (its power supply cuts out), so the Windows build was tested on the 3070 PC,
+which runs Linux: the same DemonsSoulsRecomp.exe through Proton (UMU-Proton 11, Wine's Winsock). That runs the
+`_WIN32` branches of the P2P hub in sysNet.c for the first time; real Windows is still not tested.
+
+- **Runner.** Proton starts one launch at a time (a second `umu-run` waits until the first ends: the guest only
+  started as the host was stopped), so one launch runs a master batch file that starts the host's batch, waits
+  70 s (`ping -n 71 127.0.0.1`; Wine's `choice /t` does not wait) and starts the guest's. Each copy's settings are
+  `set` lines in its own batch. The runner is a dev script kept outside the repo, like coop_run.ps1.
+- **The save.** The sandbox save's first slot is a character in the tutorial (m08). Scripted d-pad presses on the
+  profile list did not work (the first DOWN moved the cursor up, from slot 1 to 4; later presses were ignored;
+  the stick did nothing), so both copies load slot 1 and `DES_WARP_AT=70:2,0,999` takes them to 1-1.
+- **Fix: a guest in body form never got in.** Both copies arrived in 1-1 in body form. Every join reached the
+  server (JOIN_ROOM, MEMBER_JOINED) and failed 1.2 s later (OnJoinMutiplay -> OnFailedJoinSession on the guest,
+  LEAVE_ROOM), every 6 s to the end of the run. COOP_Joinable (back to soul form) only ran after a first session.
+  coop.lua now also calls it on the guest's first time alone at home, after noting its form (`orig`), which going
+  home restores. With that the guest joins and stays.
+- **Checked (all with that fix, 30 fps, god mode, the host and guest from the same save):**
+  - join: one JOIN_ROOM once both are in 1-1 and no LEAVE_ROOM after it until the run ends (3 min); OnBeSummoned_White,
+    "white phantom -> live player", "guest arrived"; the host's screen shows "Guest1" beside it in body form with
+    its health bar, the guest's shows "Host1". The P2P hub's Windows branches work under Wine.
+  - stay after a boss (`make_coop.py --test-kill 800:50`): Phalanx killed, OnEvent_4096 / BlockClear2 on both,
+    "BlockClear2_1: boss 800 dead, staying together", souls 0 -> 2282 (host) and 0 -> 1636 (guest), still together.
+  - follow (`DES_WARP_AT=...;230:3,1,999` for the host): "following the host to map 3,1, point 999", one JOIN_ROOM
+    13 s after the host's warp, both screens in the Shrine of Storms with each other.
+  - the guest goes down (`COOP_TEST_DIE=25 DES_GOD=0` for the guest): "the guest is down: it stays with the host",
+    "the guest gets up (alive true, in party true)" beside the host, no LEAVE_ROOM.
+- Still seen: before both copies are in 1-1 the guest joins and leaves two or three times (it joins while still
+  in the title screen or the tutorial); "the 'has left' box is up: OK pressed" many times on the guest meanwhile.
+  Not tested here: real Windows, two machines, 60 fps, real enemy damage, the host's death.
+
 ## Next steps
 
 1. Host alone: `tools\coop\run_coop_test.ps1 -Work C:\coop_test -Who host -Save <a copy of a gamedata folder>`.
