@@ -232,7 +232,13 @@ which runs Linux: the same DemonsSoulsRecomp.exe through Proton (UMU-Proton 11, 
     "the guest gets up (alive true, in party true)" beside the host, no LEAVE_ROOM.
 - Still seen: before both copies are in 1-1 the guest joins and leaves two or three times (it joins while still
   in the title screen or the tutorial); "the 'has left' box is up: OK pressed" many times on the guest meanwhile.
-  Not tested here: real Windows, two machines, 60 fps, real enemy damage, the host's death.
+  Not tested here: real Windows, two machines, real enemy damage, the host's death.
+- **Both copies at 60 fps (2026-11-25; DES_FPS=60 DES_60FPS=1 PS3_VBLANK_HZ=120 PS3_CLOCK_SCALE=200, as PLAY.bat):**
+  the same four tests pass the same way (one join that holds, both stay after Phalanx with the same souls,
+  follow to the Shrine 11 s after the host's warp, the guest down and up in the party). Two copies on one PC did
+  not hold 60: 48-51 fps in Boletaria (dips to ~40), 56-58 in the Shrine (from the frame dumps' times; 29.7 at 30
+  fps), so the games ran a little slow -- what a player whose PC cannot hold 60 would get. Not tested: one copy at
+  60 and the other at 30, and how the other player's movement looks (nobody moves in these tests).
 
 ## Next steps
 
