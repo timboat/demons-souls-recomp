@@ -34,6 +34,8 @@ rem Uses the build SETUP.bat / BUILD.bat make (port\build_opt).
 rem DemonsSoulsLauncher.exe runs this file with the choices from its window as these variables;
 rem DES_LAUNCHER=1 (set by it) skips the pauses: the launcher reports errors itself.
 setlocal
+rem Python tools read and write UTF-8 whatever the Windows code page (on a Japanese cp932 PC the lift failed)
+set "PYTHONUTF8=1"
 rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
 rem letter while this window is open, and this file runs again from there.
 if not "%~d0"=="\\" goto :ds_local

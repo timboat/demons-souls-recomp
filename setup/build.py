@@ -24,6 +24,10 @@ usage: BUILD.bat [--jobs N] [ninja targets...]
 import glob, hashlib, json, os, re, shutil, subprocess, sys, tarfile, tempfile, threading, time, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import netcert                                                   # noqa: E402
+
+# Every Python tool this runs (the lifter, patch tools) reads and writes UTF-8, whatever the Windows code page:
+# with cp932 (Japanese) or similar the lift died writing an em dash (UnicodeEncodeError).
+os.environ.setdefault('PYTHONUTF8', '1')
 netcert.install()   # HTTPS on a fresh Windows: let Windows fetch missing root certificates (netcert.py)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

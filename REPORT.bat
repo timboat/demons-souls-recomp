@@ -4,6 +4,8 @@ rem specs and the end of the log) into one zip, shows it in Explorer and opens t
 rem page so you can attach it. Your Windows user name is removed from everything in the zip.
 rem   REPORT.bat [perf\<date_time> folder]   (default: the newest recording)
 setlocal
+rem Python tools read and write UTF-8 whatever the Windows code page (on a Japanese cp932 PC the lift failed)
+set "PYTHONUTF8=1"
 rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
 rem letter while this window is open, and this file runs again from there.
 if not "%~d0"=="\\" goto :ds_local

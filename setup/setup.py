@@ -27,6 +27,10 @@ import build                                                    # noqa: E402
 import patch_sync                                               # noqa: E402
 import region                                                   # noqa: E402
 
+# Every Python tool this runs (the lifter, patch tools) reads and writes UTF-8, whatever the Windows code page:
+# with cp932 (Japanese) or similar the lift died writing an em dash (UnicodeEncodeError).
+os.environ.setdefault('PYTHONUTF8', '1')
+
 GAME = os.path.join(ROOT, 'game')
 USRDIR = os.path.join(GAME, 'PS3_GAME', 'USRDIR')
 PORT = os.path.join(ROOT, 'port')

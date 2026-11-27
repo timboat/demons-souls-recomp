@@ -4,6 +4,8 @@ rem Drag your disc image (.iso, Redump .zip, or dumped disc folder) onto this fi
 rem it and it will ask. It extracts the game, recompiles it and builds DemonsSoulsRecomp.exe.
 rem Safe to run again: finished steps are skipped.
 setlocal EnableExtensions
+rem Python tools read and write UTF-8 whatever the Windows code page (on a Japanese cp932 PC the lift failed)
+set "PYTHONUTF8=1"
 rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
 rem letter while this window is open, and this file runs again from there.
 if not "%~d0"=="\\" goto :ds_local

@@ -2,6 +2,8 @@
 rem Rebuilds DemonsSoulsRecomp.exe after you change code (incremental; SETUP.bat must have run once).
 rem   BUILD.bat [--jobs N] [ninja targets...]
 setlocal
+rem Python tools read and write UTF-8 whatever the Windows code page (on a Japanese cp932 PC the lift failed)
+set "PYTHONUTF8=1"
 rem In a network folder (\\server\share\..., GitHub #45) cmd cannot cd: pushd gives the share a drive
 rem letter while this window is open, and this file runs again from there.
 if not "%~d0"=="\\" goto :ds_local
